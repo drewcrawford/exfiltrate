@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use crate::core::jrpc::{Request, Response};
-pub mod logging;
 mod tools;
 
 pub fn dispatch(request: Request) -> Response<serde_json::Value> {
