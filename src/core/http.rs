@@ -11,6 +11,7 @@ fn chunk_response(response: &[u8]) -> Vec<u8> {
         //https://html.spec.whatwg.org/multipage/server-sent-events.html
         vec.extend_from_slice(b"data: ");
         vec.extend_from_slice(line.unwrap().as_bytes());
+        vec.extend_from_slice(b"\r\n");
     }
     vec.extend_from_slice(b"\r\n\r\n");
     vec
