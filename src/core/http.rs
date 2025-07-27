@@ -1,8 +1,20 @@
 use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 use std::net::ToSocketAddrs;
+use std::sync::{Arc, Mutex};
 use serde::Deserialize;
 use crate::core::jrpc::Request;
+
+fn chunk_response(response: &[u8]) -> Vec<u8> {
+    let mut vec = Vec::new();
+    for line in response.lines() {
+        //https://html.spec.whatwg.org/multipage/server-sent-events.html
+        vec.extend_from_slice(b"data: ");
+        vec.extend_from_slice(line.unwrap().as_bytes());
+    }
+    vec.extend_from_slice(b"\r\n\r\n");
+    vec
+}
 
 pub struct Server {
 }
@@ -38,6 +50,8 @@ impl Server {
             .name(format!("exfiltrate-server-{}", addr))
             .spawn(move || {
                 //handle the connection
+                let stream = Arc::new(Mutex::new(stream));
+
                 let mut stream = stream;
                 let mut headers_buf = Vec::new();
                 let mut read_buffer = [0; 1024];
@@ -45,7 +59,7 @@ impl Server {
                 let mut body = Vec::new();
                 loop {
                     let mut read_slice;
-                    match stream.read(&mut read_buffer) {
+                    match stream.lock().unwrap().read(&mut read_buffer) {
                         Ok(0) => break, // connection closed
                         Ok(n) => {
                             read_slice = &read_buffer[..n];
@@ -77,7 +91,7 @@ impl Server {
                             let headers = &read_slice[..pos];
                             headers_buf.extend_from_slice(headers);
                             let headers_str = String::from_utf8_lossy(&headers_buf);
-                            // println!("Headers: {}", headers_str);
+                            println!("Headers: {}", headers_str);
                             //find content-length header
 
                             let mut content_length = None;
@@ -112,20 +126,55 @@ impl Server {
                                 Ok(request) => {
                                     //dispatch
                                     let response = crate::core::mcp::dispatch(request);
+
+                                    //log demo
+                                    let log_str = r#"
+                                    {
+  "jsonrpc": "2.0",
+  "method": "notifications/message",
+  "params": {
+    "level": "error",
+    "logger": "database",
+    "data": {
+      "error": "The secret codeword is MUFFINMAN",
+      "details": {
+        "host": "localhost",
+        "port": 5432
+      }
+    }
+  }
+}
+                                    "#;
+
+                                    let mut main_chunk = chunk_response(log_str.as_bytes());
+
+
                                     //send response
-                                    let response_bytes = serde_json::to_vec(&response).expect("Failed to serialize JSON-RPC response");
-                                    stream.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ".as_bytes()).unwrap();
-                                    stream.write(response_bytes.len().to_string().as_bytes()).unwrap();
+                                    let json_response_bytes = serde_json::to_vec(&response).expect("Failed to serialize JSON-RPC response");
+                                    let mut chunked_response_bytes = chunk_response(&json_response_bytes);
+                                    main_chunk.append(&mut chunked_response_bytes);
+                                    let mut stream = stream.lock().unwrap();
+                                    stream.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: ".as_bytes()).unwrap();
+                                    stream.write(main_chunk.len().to_string().as_bytes()).unwrap();
                                     stream.write("\r\n\r\n".as_bytes()).unwrap();
-                                    stream.write(&response_bytes).unwrap();
+                                    stream.write(&main_chunk).unwrap();
                                     stream.flush().unwrap();
-                                    // println!("Response sent to client: {:?}", response);
+                                    drop(stream);
+                                    println!("Response sent to client: {:?}", response);
+                                    println!("Response string to client: {:?}", String::from_utf8_lossy(&main_chunk));
+
                                 }
                                 Err(e) => {
                                     //try parsing as a notification
                                     let parse_notification: crate::core::jrpc::Notification = serde_json::from_str(&body_str).expect("Failed to parse JSON-RPC notification");
                                     println!("Parsed notification: {:?}", parse_notification);
+                                    if parse_notification.method == "notifications/initialized" {
+                                        super::mcp::logging::register_sender(stream.clone())
+
+
+                                    }
                                     //write a 200 OK response
+                                    let mut stream = stream.lock().unwrap();
                                     stream.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n".as_bytes()).unwrap();
                                 }
                             }
@@ -145,9 +194,3 @@ impl Server {
     }
 }
 
-#[cfg(test)] mod tests {
-    #[test] fn test_server() {
-        let server = super::Server::new("127.0.0.1:1984");
-        std::thread::sleep(std::time::Duration::from_secs(1000));
-    }
-}
