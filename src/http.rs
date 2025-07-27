@@ -3,7 +3,7 @@ use std::io::{BufRead, Read, Write};
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use serde::Deserialize;
-use crate::core::jrpc::Request;
+use crate::jrpc::Request;
 
 fn chunk_response(response: &[u8]) -> Vec<u8> {
     let mut vec = Vec::new();
@@ -57,14 +57,14 @@ impl Session {
                     break;
                 }
             }
-            if parse_state == crate::core::http::ParseState::Method {
+            if parse_state == crate::http::ParseState::Method {
                 // If we are in the method state, we expect to read the request line
                 if let Some(pos) = read_slice.iter().position(|&b| b == b'\n') {
                     // We have a complete request line
                     let request_line = &read_slice[..pos];
                     let request_line_str = String::from_utf8_lossy(request_line);
                     println!("Request Line: {}", request_line_str);
-                    parse_state = crate::core::http::ParseState::Headers;
+                    parse_state = crate::http::ParseState::Headers;
                     //advance the read_slice
                     read_slice = &read_slice[pos + 1..];
                 } else {
@@ -72,7 +72,7 @@ impl Session {
                     continue;
                 }
             }
-            if parse_state == crate::core::http::ParseState::Headers {
+            if parse_state == crate::http::ParseState::Headers {
                 //search for '\r\n\r\n' to find the end of headers
                 if let Some(pos) = read_slice.windows(4).position(|window| window == b"\r\n\r\n") {
                     // We have a complete header block
@@ -92,7 +92,7 @@ impl Session {
                     }
 
 
-                    parse_state = crate::core::http::ParseState::Body(content_length.expect("content-length header not found"));
+                    parse_state = crate::http::ParseState::Body(content_length.expect("content-length header not found"));
                     //advance the read_slice
                     read_slice = &read_slice[pos + 4..];
                 } else {
@@ -101,7 +101,7 @@ impl Session {
                     continue;
                 }
             }
-            if let crate::core::http::ParseState::Body(content_length) = parse_state {
+            if let crate::http::ParseState::Body(content_length) = parse_state {
                 // We are in the body state, we expect to read the body
                 if read_slice.len() >= content_length {
                     // We have a complete body
@@ -113,7 +113,7 @@ impl Session {
                     match parse_request {
                         Ok(request) => {
                             //dispatch
-                            let response = crate::core::mcp::dispatch(request);
+                            let response = crate::mcp::dispatch(request);
 
                             //log demo
                             let log_str = r#"
@@ -154,7 +154,7 @@ impl Session {
                         }
                         Err(e) => {
                             //try parsing as a notification
-                            let parse_notification: crate::core::jrpc::Notification = serde_json::from_str(&body_str).expect("Failed to parse JSON-RPC notification");
+                            let parse_notification: crate::jrpc::Notification = serde_json::from_str(&body_str).expect("Failed to parse JSON-RPC notification");
                             println!("Parsed notification: {:?}", parse_notification);
                             if parse_notification.method == "notifications/initialized" {
 
@@ -169,7 +169,7 @@ impl Session {
                     // Reset for next request
                     headers_buf.clear();
                     body.clear();
-                    parse_state = crate::core::http::ParseState::Method;
+                    parse_state = crate::http::ParseState::Method;
                 } else {
                     // We don't have a complete body yet, continue reading
                     body.extend_from_slice(read_slice);

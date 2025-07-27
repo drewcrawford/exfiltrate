@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use serde::{Serialize, Serializer};
-use crate::core::jrpc::{Request, Response};
-use crate::core::mcp::InitializeResult;
+use crate::jrpc::{Request, Response};
+use crate::mcp::InitializeResult;
 
-pub trait Tool {
+pub trait Tool: Send {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn input_schema(&self) -> InputSchema;
@@ -12,7 +12,7 @@ pub trait Tool {
     fn call(&self, params: HashMap<String, serde_json::Value>) -> Result<ToolCallResponse, ToolCallError>;
 }
 
-pub const TOOLS: LazyLock<Mutex<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
+pub static TOOLS: LazyLock<Mutex<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
     Mutex::new(vec![
     ])
 });
@@ -41,28 +41,57 @@ impl ToolInfo {
 }
 
 #[derive(Debug, serde::Serialize)]
-struct InputSchema {
+pub struct InputSchema {
     r#type: String,
     properties: HashMap<String, HashMap<String, serde_json::Value>>,
     required: Vec<String>,
 }
 
+pub struct Argument {
+    name: String,
+    r#type: String,
+    description: String,
+    required: bool,
+}
+
+impl Argument {
+    pub fn new(name: String, r#type: String, description: String, required: bool) -> Self {
+        Self {
+            name,
+            r#type,
+            description,
+            required,
+        }
+    }
+}
+
 impl InputSchema {
-    fn new() -> Self {
+    pub fn new<A: IntoIterator<Item=Argument>>(arguments: A) -> Self {
+        let mut properties = HashMap::new();
+        let mut required = Vec::new();
+        for argument in arguments {
+            let mut inner_map: HashMap<String,serde_json::Value> = HashMap::new();
+            inner_map.insert("type".to_string(), argument.r#type.into());
+            inner_map.insert("description".to_string(), argument.description.into());
+            if argument.required {
+                required.push(argument.name.clone());
+            }
+            properties.insert(argument.name, inner_map);
+        }
         InputSchema {
             r#type: "object".to_string(),
-            properties: HashMap::new(),
-            required: Vec::new(),
+            properties,
+            required,
         }
     }
 }
 
 impl ToolInfo {
-    fn new(name: &str, description: &str) -> Self {
+    fn new(name: String, description: String, input_schema: InputSchema) -> Self {
         ToolInfo {
-            name: name.to_string(),
-            description: description.to_string(),
-            input_schema: InputSchema::new(),
+            name,
+            description,
+            input_schema,
         }
     }
 }
@@ -115,12 +144,19 @@ impl ToolCallError {
             is_error: true,
         }
     }
+    pub(crate) fn into_response(self) -> ToolCallResponse {
+        ToolCallResponse {
+            content: self.content,
+            is_error: true,
+        }
+    }
 }
 
 
 
 #[derive(Debug)]
-enum ToolContent {
+#[non_exhaustive]
+pub enum ToolContent {
     Text(String),
 }
 
@@ -142,24 +178,39 @@ impl Serialize for ToolContent {
     }
 }
 
-pub fn call(request: Request) -> Response<ToolCallResponse> {
+impl From<String> for ToolContent {
+    fn from(value: String) -> Self {
+        ToolContent::Text(value)
+    }
+}
+
+impl From<&str> for ToolContent {
+    fn from(value: &str) -> Self {
+        ToolContent::Text(value.to_string())
+    }
+}
+
+pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
     let params = match request.params {
         Some(params) => match serde_json::from_value::<ToolCallParams>(params) {
             Ok(params) => params,
-            Err(err) => return Response::err(crate::core::jrpc::Error::new(-32602, "Invalid params".to_string(), Some(err.to_string().into())), request.id),
+            Err(err) => return Response::err(crate::jrpc::Error::new(-32602, "Invalid params".to_string(), Some(err.to_string().into())), request.id),
         },
-        None => return Response::err(crate::core::jrpc::Error::new(-32602, "Invalid params".to_string(), Some("No parameters specified".into())), request.id),
+        None => return Response::err(crate::jrpc::Error::new(-32602, "Invalid params".to_string(), Some("No parameters specified".into())), request.id),
     };
     //look up tool
-    let binding = TOOLS;
-    let tools = binding.lock().unwrap();
+    let tools = TOOLS.lock().unwrap();
     let tool = tools.iter()
         .find(|t| t.name() == params.name)
         .map(|t| t.as_ref())
-        .ok_or_else(|| crate::core::jrpc::Error::new(-32602, format!("Unknown tool: {}", params.name), None));
+        .ok_or_else(|| crate::jrpc::Error::new(-32602, format!("Unknown tool: {}", params.name), None));
     match tool {
         Ok(tool) => {
-            todo!()
+            let response = tool.call(params.arguments);
+            match response {
+                Ok(response) => Response::new(response, request.id),
+                Err(err) => Response::new(err.into_response(), request.id)
+            }
         }
         Err(err) => {
             return Response::err(err, request.id);

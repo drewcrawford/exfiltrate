@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use crate::core::jrpc::{Request, Response};
-mod tools;
+use crate::jrpc::{Request, Response};
+pub mod tools;
 
 pub fn dispatch(request: Request) -> Response<serde_json::Value> {
     if request.method == "initialize" {
