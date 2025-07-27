@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use crate::core::jrpc::{Request, Response};
 pub mod logging;
+mod tools;
 
 pub fn dispatch(request: Request) -> Response<serde_json::Value> {
     if request.method == "initialize" {
         initialize(request).erase()
+    } else if request.method == "tools/list" {
+        tools::list(request).erase()
     }
     else {
         Response::err(super::jrpc::Error::new(-32601, "Method not found".to_string(), None), request.id)
