@@ -35,7 +35,7 @@ impl InternalProxy {
             match request {
                 Ok(request) => {
                     eprintln!("Received request from internal proxy: {:?}", request);
-                    let response = crate::mcp::dispatch(request);
+                    let response = crate::mcp::dispatch_in_target(request);
                     let response_bytes = serde_json::to_vec(&response).unwrap();
                     eprintln!("Sending response from internal proxy {:?}", String::from_utf8_lossy(&response_bytes));
                     Some(response_bytes.into_boxed_slice())

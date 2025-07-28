@@ -82,11 +82,34 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 impl Error {
-    pub fn new(code: i32, message: String, data: Option<serde_json::Value>) -> Self {
+    fn new(code: i32, message: String, data: Option<serde_json::Value>) -> Self {
         Self {
             code,
             message,
             data,
+        }
+    }
+
+    pub fn method_not_found() -> Self {
+        Self {
+            code: -32601, // Method not found
+            message: "Method not found".to_string(),
+            data: None,
+        }
+    }
+    pub fn invalid_params(detail: String) -> Self {
+        Self {
+            code: -32602, // Invalid params
+            message: "Invalid params".to_string(),
+            data: Some(detail.into()),
+        }
+    }
+
+    pub fn unknown_tool(name: String) -> Self {
+        Self {
+            code: -32602, // Invalid params
+            message: format!("Unknown tool: {}", name),
+            data: None,
         }
     }
 

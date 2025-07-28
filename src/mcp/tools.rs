@@ -14,26 +14,22 @@ pub trait Tool: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
-pub trait BuiltinTool : Tool {
-    fn call_local(&self, params: HashMap<String, serde_json::Value>) -> Result<ToolCallResponse, ToolCallError>;
-}
 
-pub static BUILTIN_TOOLS: LazyLock<RwLock<Vec<Box<dyn BuiltinTool>>>> = LazyLock::new(|| {
-    RwLock::new(vec![
-        Box::new(crate::mcp::latest_tools::LatestTools),
-        Box::new(crate::mcp::latest_tools::RunLatestTool),
-    ])
-});
 
+
+/**
+These tools are avilable in the target application.
+Accessing these tools from the proxy application makes little sense.
+*/
 pub static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
     RwLock::new(vec![
 
     ])
 });
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize,serde::Deserialize)]
 pub struct ToolList {
-    tools: Vec<ToolInfo>,
+    pub(crate) tools: Vec<ToolInfo>,
 }
 
 impl ToolList {
@@ -42,8 +38,8 @@ impl ToolList {
     }
 }
 
-#[derive(Debug, serde::Serialize)]
-struct ToolInfo {
+#[derive(Debug, serde::Serialize,serde::Deserialize)]
+pub(crate) struct ToolInfo {
     name: String,
     description: String,
     #[serde(rename = "inputSchema")]
@@ -51,7 +47,7 @@ struct ToolInfo {
 }
 
 impl ToolInfo {
-    fn from_tool(tool: &dyn Tool) -> Self {
+    pub(crate) fn from_tool(tool: &dyn Tool) -> Self {
         ToolInfo {
             name: tool.name().to_string(),
             description: tool.description().to_string(),
@@ -60,7 +56,7 @@ impl ToolInfo {
     }
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize,serde::Deserialize)]
 pub struct InputSchema {
     r#type: String,
     properties: HashMap<String, HashMap<String, serde_json::Value>>,
@@ -117,45 +113,23 @@ impl ToolInfo {
 }
 
 pub(crate) fn list_int() -> ToolList {
-    let builtin_tool_infos = BUILTIN_TOOLS.read().unwrap().iter().map(|tool| ToolInfo::from_tool(tool.as_ref())).collect::<Vec<_>>();
-
     let tool_infos: Vec<ToolInfo> = TOOLS.read().unwrap().iter().map(|tool| ToolInfo::from_tool(tool.as_ref())).collect();
-
-    let all_infos = builtin_tool_infos.into_iter().chain(tool_infos.into_iter()).collect::<Vec<_>>();
     let tool_list = ToolList {
-        tools: all_infos,
+        tools: tool_infos,
     };
     tool_list
 }
 
-pub(crate) fn list_builtin() -> ToolList {
-    let b = BUILTIN_TOOLS.read().unwrap();
-    let list: Vec<ToolInfo> = b.iter()
-        .map(|tool| ToolInfo::from_tool(tool.as_ref()))
-        .collect();
-    ToolList {
-        tools: list
-    }
-}
 
-pub(crate) fn list(request: Request) -> Response<ToolList> {
+/**
+Returns a list of tools available in the current application (e.g. the target application)
+*/
+pub(crate) fn list_process(request: Request) -> Response<ToolList> {
     let tool_list = list_int();
     let response = Response::new(tool_list, request.id);
     response
 }
 
-pub(crate) fn list_local() -> ToolList {
-    let b = BUILTIN_TOOLS.read().unwrap();
-    let list: Vec<ToolInfo> = b.iter()
-        .map(|tool| {
-            ToolInfo::from_tool(tool.as_ref())
-        })
-        .collect();
-    let tool_list = ToolList {
-        tools: list
-    };
-    tool_list
-}
 
 pub fn add_tool(tool: Box<dyn Tool>) {
     TOOLS.write().unwrap().push(tool);
@@ -176,8 +150,8 @@ pub fn add_tool(tool: Box<dyn Tool>) {
 
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct ToolCallParams {
-    name: String,
-    arguments: HashMap<String, serde_json::Value>,
+    pub(crate) name: String,
+    pub(crate) arguments: HashMap<String, serde_json::Value>,
 }
 
 impl ToolCallParams {
@@ -264,7 +238,6 @@ impl From<&str> for ToolContent {
 }
 
 pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse, crate::jrpc::Error>  {
-    //look up tool
     let tools = TOOLS.read().unwrap();
     let tool = tools.iter()
         .find(|t| t.name() == params.name)
@@ -278,7 +251,7 @@ pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse, crate
             }
         }
         None => {
-            Err(Error::new(-32602, format!("Unknown tool: {}", params.name), None))
+            Err(Error::unknown_tool(params.name))
         }
     }
 }
@@ -287,9 +260,9 @@ pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
     let params = match request.params {
         Some(params) => match serde_json::from_value::<ToolCallParams>(params) {
             Ok(params) => params,
-            Err(err) => return Response::err(Error::new(-32602, "Invalid params".to_string(), Some(err.to_string().into())), request.id),
+            Err(err) => return Response::err(Error::invalid_params(err.to_string()), request.id),
         },
-        None => return Response::err(Error::new(-32602, "Invalid params".to_string(), Some("No parameters specified".into())), request.id),
+        None => return Response::err(Error::invalid_params("No parameters provided".to_string()), request.id),
     };
     let r = call_imp(params);
     match r {
@@ -298,26 +271,6 @@ pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
         }
         Err(e) => {
             Response::err(e, request.id)
-        }
-    }
-}
-
-pub(crate) fn call_local(params: ToolCallParams) -> Result<ToolCallResponse, crate::jrpc::Error> {
-    //look up tool
-    let tools = BUILTIN_TOOLS.read().unwrap();
-    let tool = tools.iter()
-        .find(|t| t.name() == params.name)
-        .map(|t| t.as_ref());
-    match tool {
-        Some(tool) => {
-            let call = tool.call_local(params.arguments);
-            match call {
-                Ok(response) => Ok(response),
-                Err(err) => Ok(err.into_response())
-            }
-        }
-        None => {
-            Err(Error::new(-32602, format!("Unknown tool: {}", params.name), None))
         }
     }
 }
