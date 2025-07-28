@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use serde::Serialize;
 
 #[derive(serde::Deserialize,serde::Serialize,Debug,Clone)]
@@ -71,6 +72,14 @@ pub struct Error {
     pub message: String,
     pub data: Option<serde_json::Value>,
 }
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Error {}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for Error {}
 
 impl Error {
     pub fn new(code: i32, message: String, data: Option<serde_json::Value>) -> Self {

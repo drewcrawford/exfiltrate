@@ -29,6 +29,8 @@ pub enum Error {
     NotConnected,
     #[error("Failed to send message: {0}")]
     TransitError(#[from] crate::bidirectional_proxy::Error),
+    #[error("Failed to parse message: {0}")]
+    JRPCError(#[from] crate::jrpc::Error),
 }
 
 impl TransitProxy {
@@ -117,11 +119,19 @@ impl TransitProxy {
     }
 
     fn local_fallback(message: crate::jrpc::Request) -> Result<crate::jrpc::Response<serde_json::Value>, Error> {
-        eprintln!("Local fallback for request: {:?}", message);
+        eprintln!("Local fallback for request: {:?}", &message);
         match message.method.as_str() {
             "tools/list" => {
-                let result = crate::tools::ToolList::empty();
-                Ok(crate::jrpc::Response::new(result, message.id).erase())
+                let result = crate::tools::list_local();
+                Ok(Response::new(result, message.id).erase())
+            }
+            "tools/call" => {
+                let params: crate::tools::ToolCallParams = serde_json::from_value(message.params.unwrap()).unwrap();
+                let result = crate::tools::call_local(params);
+                match result {
+                    Ok(response) => Ok(Response::new(response, message.id).erase()),
+                    Err(e) => Err(e.into()),
+                }
             }
             _ => {
                 eprintln!("No connection available, cannot send request: {:?}", message);
@@ -137,7 +147,6 @@ impl TransitProxy {
 
 impl SharedAccept {
     fn received_notification(&mut self, notification: crate::jrpc::Notification) {
-        eprintln!("Received notification: {:?}", notification);
         (self.process_notifications)(notification);
     }
 

@@ -1,6 +1,7 @@
+use std::any::Any;
 use std::collections::HashMap;
 use serde_json::Value;
-use crate::tools::{InputSchema, Tool, ToolCallError, ToolCallParams, ToolCallResponse};
+use crate::tools::{BuiltinTool, InputSchema, Tool, ToolCallError, ToolCallParams, ToolCallResponse};
 
 pub struct LatestTools;
 
@@ -26,6 +27,18 @@ impl Tool for LatestTools {
 
     fn input_schema(&self) -> crate::mcp::tools::InputSchema {
         crate::mcp::tools::InputSchema::new(vec![])
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl BuiltinTool for LatestTools {
+    fn call_local(&self, params: HashMap<String, Value>) -> Result<ToolCallResponse, ToolCallError> {
+        let tools = crate::mcp::tools::list_local();
+        let text = serde_json::to_string(&tools).unwrap();
+        Ok(ToolCallResponse::new(vec![text.into()]))
     }
 }
 
@@ -69,6 +82,33 @@ impl Tool for RunLatestTool {
 
         let tool_params = ToolCallParams::new(tool_name, tool_arguments);
         let r = crate::mcp::tools::call_imp(tool_params);
+        r.map_err(|e| ToolCallError::new(vec![format!("Error calling tool: {:?}", e).into()]))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl BuiltinTool for RunLatestTool {
+    fn call_local(&self, params: HashMap<String, Value>) -> Result<ToolCallResponse, ToolCallError> {
+        let tool_name;
+        if let Some(name) = params.get("tool_name").and_then(|v| v.as_str()) {
+            tool_name = name.to_string();
+        } else {
+            return Err(ToolCallError::new(vec!["Missing required parameter: tool_name".into()]));
+        }
+        let tool_arguments = params.get("params")
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+
+        //convert to hashmap
+        let tool_arguments: HashMap<String, Value> = tool_arguments.into_iter()
+            .map(|(k, v)| (k, v))
+            .collect();
+        let tool_params = ToolCallParams::new(tool_name, tool_arguments);
+        let r = crate::mcp::tools::call_local(tool_params);
         r.map_err(|e| ToolCallError::new(vec![format!("Error calling tool: {:?}", e).into()]))
     }
 }

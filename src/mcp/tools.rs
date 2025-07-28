@@ -10,12 +10,24 @@ pub trait Tool: Send + Sync {
     fn input_schema(&self) -> InputSchema;
 
     fn call(&self, params: HashMap<String, serde_json::Value>) -> Result<ToolCallResponse, ToolCallError>;
+
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
-pub static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
+pub trait BuiltinTool : Tool {
+    fn call_local(&self, params: HashMap<String, serde_json::Value>) -> Result<ToolCallResponse, ToolCallError>;
+}
+
+pub static BUILTIN_TOOLS: LazyLock<RwLock<Vec<Box<dyn BuiltinTool>>>> = LazyLock::new(|| {
     RwLock::new(vec![
         Box::new(crate::mcp::latest_tools::LatestTools),
         Box::new(crate::mcp::latest_tools::RunLatestTool),
+    ])
+});
+
+pub static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
+    RwLock::new(vec![
+
     ])
 });
 
@@ -105,17 +117,44 @@ impl ToolInfo {
 }
 
 pub(crate) fn list_int() -> ToolList {
-    let tools: Vec<ToolInfo> = TOOLS.read().unwrap().iter().map(|tool| ToolInfo::from_tool(tool.as_ref())).collect();
+    let builtin_tool_infos = BUILTIN_TOOLS.read().unwrap().iter().map(|tool| ToolInfo::from_tool(tool.as_ref())).collect::<Vec<_>>();
+
+    let tool_infos: Vec<ToolInfo> = TOOLS.read().unwrap().iter().map(|tool| ToolInfo::from_tool(tool.as_ref())).collect();
+
+    let all_infos = builtin_tool_infos.into_iter().chain(tool_infos.into_iter()).collect::<Vec<_>>();
     let tool_list = ToolList {
-        tools,
+        tools: all_infos,
     };
     tool_list
+}
+
+pub(crate) fn list_builtin() -> ToolList {
+    let b = BUILTIN_TOOLS.read().unwrap();
+    let list: Vec<ToolInfo> = b.iter()
+        .map(|tool| ToolInfo::from_tool(tool.as_ref()))
+        .collect();
+    ToolList {
+        tools: list
+    }
 }
 
 pub(crate) fn list(request: Request) -> Response<ToolList> {
     let tool_list = list_int();
     let response = Response::new(tool_list, request.id);
     response
+}
+
+pub(crate) fn list_local() -> ToolList {
+    let b = BUILTIN_TOOLS.read().unwrap();
+    let list: Vec<ToolInfo> = b.iter()
+        .map(|tool| {
+            ToolInfo::from_tool(tool.as_ref())
+        })
+        .collect();
+    let tool_list = ToolList {
+        tools: list
+    };
+    tool_list
 }
 
 pub fn add_tool(tool: Box<dyn Tool>) {
@@ -259,6 +298,26 @@ pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
         }
         Err(e) => {
             Response::err(e, request.id)
+        }
+    }
+}
+
+pub(crate) fn call_local(params: ToolCallParams) -> Result<ToolCallResponse, crate::jrpc::Error> {
+    //look up tool
+    let tools = BUILTIN_TOOLS.read().unwrap();
+    let tool = tools.iter()
+        .find(|t| t.name() == params.name)
+        .map(|t| t.as_ref());
+    match tool {
+        Some(tool) => {
+            let call = tool.call_local(params.arguments);
+            match call {
+                Ok(response) => Ok(response),
+                Err(err) => Ok(err.into_response())
+            }
+        }
+        None => {
+            Err(Error::new(-32602, format!("Unknown tool: {}", params.name), None))
         }
     }
 }
