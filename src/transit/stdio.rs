@@ -1,11 +1,10 @@
 use crate::transit::transit_proxy::TransitProxy;
 use std::io::Write;
 pub struct Server {
-    proxy: TransitProxy,
 }
 
 impl Server {
-    pub fn new(proxy: TransitProxy) -> Self {
+    pub fn new(mut proxy: TransitProxy) -> Self {
         proxy.bind(move |msg| {
             let mut stdin = std::io::stdin();
             let mut stdout = std::io::stdout();
@@ -18,7 +17,7 @@ impl Server {
         });
         std::thread::Builder::new()
             .name("exfiltrate::stdio".to_string())
-            .spawn(|| {
+            .spawn(move || {
                 let mut stdin = std::io::stdin();
                 loop {
                     let mut buffer = String::new();
@@ -26,17 +25,23 @@ impl Server {
                         eprintln!("Failed to read from stdin, exiting...");
                         break;
                     }
-                    let r = serde_json::from_str::<crate::jrpc::Request>(&buffer);
-
-                    eprintln!("Received request from stdin: {:?}", r);
-                    match r {
-                        Ok(request) => { todo!() },
-                        Err(e) => todo!(),
+                    let buffer = buffer.trim().as_bytes();
+                    match proxy.received_data(buffer) {
+                        Some(response) => {
+                            let as_bytes = serde_json::to_vec(&response).unwrap();
+                            let mut stdout = std::io::stdout();
+                            stdout.write_all(&as_bytes).unwrap();
+                            stdout.write_all(b"\n").unwrap();
+                            stdout.flush().unwrap();
+                        }
+                        None => {
+                            //nothing?
+                        }
                     }
                 }
-            });
+            }).unwrap();
         eprintln!("Proxy started on stdin/stdout");
-        Server {proxy}
+        Server {}
     }
 
 
