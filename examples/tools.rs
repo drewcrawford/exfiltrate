@@ -25,12 +25,12 @@ impl exfiltrate::tools::Tool for MyTool {
     }
 }
 
-pub struct LateTool {
+pub struct EventualTool {
 
 }
-impl exfiltrate::tools::Tool for LateTool {
+impl exfiltrate::tools::Tool for EventualTool {
     fn name(&self) -> &str {
-        "late_tool"
+        "eventual_tool"
     }
 
     fn description(&self) -> &str {
@@ -54,7 +54,7 @@ fn main() {
     exfiltrate::tools::add_tool(Box::new(MyTool{}));
     std::thread::sleep(std::time::Duration::from_secs(10));
     //insert a new tool
-    exfiltrate::tools::add_tool(Box::new(LateTool {}));
+    exfiltrate::tools::add_tool(Box::new(EventualTool {}));
     println!("Added late tool");
     std::thread::sleep(std::time::Duration::from_secs(1000));
 }

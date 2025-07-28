@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, RwLock};
 use serde::{Serialize, Serializer};
 use crate::http::broadcast_message;
 use crate::jrpc::{Request, Response};
 use crate::mcp::InitializeResult;
 
-pub trait Tool: Send {
+pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn input_schema(&self) -> InputSchema;
@@ -13,8 +13,10 @@ pub trait Tool: Send {
     fn call(&self, params: HashMap<String, serde_json::Value>) -> Result<ToolCallResponse, ToolCallError>;
 }
 
-pub static TOOLS: LazyLock<Mutex<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
-    Mutex::new(vec![
+pub static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
+    RwLock::new(vec![
+        Box::new(crate::mcp::latest_tools::LatestTools),
+        Box::new(crate::mcp::latest_tools::RunLatestTool),
     ])
 });
 
@@ -97,26 +99,39 @@ impl ToolInfo {
     }
 }
 
-pub fn list(request: Request) -> Response<ToolList> {
-    let tools: Vec<ToolInfo> = TOOLS.lock().unwrap().iter().map(|tool| ToolInfo::from_tool(tool.as_ref())).collect();
+pub(crate) fn list_int() -> ToolList {
+    let tools: Vec<ToolInfo> = TOOLS.read().unwrap().iter().map(|tool| ToolInfo::from_tool(tool.as_ref())).collect();
     let tool_list = ToolList {
         tools,
     };
+    tool_list
+}
+
+pub(crate) fn list(request: Request) -> Response<ToolList> {
+    let tool_list = list_int();
     let response = Response::new(tool_list, request.id);
     response
 }
 
 pub fn add_tool(tool: Box<dyn Tool>) {
-    TOOLS.lock().unwrap().push(tool);
+    TOOLS.write().unwrap().push(tool);
     //create a tool changed message
     let json_rpc = r#"{ "jsonrpc": "2.0","method": "notifications/tools/list_changed"}"#;
     broadcast_message(json_rpc.as_bytes());
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct ToolCallParams {
+pub(crate) struct ToolCallParams {
     name: String,
     arguments: HashMap<String, serde_json::Value>,
+}
+
+impl ToolCallParams {
+    pub(crate) fn new(name: String, arguments: HashMap<String, serde_json::Value>) -> Self {
+        ToolCallParams {
+            name, arguments
+        }
+    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -194,6 +209,26 @@ impl From<&str> for ToolContent {
     }
 }
 
+pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse,crate::jrpc::Error>  {
+    //look up tool
+    let tools = TOOLS.read().unwrap();
+    let tool = tools.iter()
+        .find(|t| t.name() == params.name)
+        .map(|t| t.as_ref());
+    match tool {
+        Some(tool) => {
+            let call = tool.call(params.arguments);
+            match call {
+                Ok(response) => Ok(response),
+                Err(err) => Ok(err.into_response())
+            }
+        }
+        None => {
+            Err(crate::jrpc::Error::new(-32602, format!("Unknown tool: {}", params.name), None))
+        }
+    }
+}
+
 pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
     let params = match request.params {
         Some(params) => match serde_json::from_value::<ToolCallParams>(params) {
@@ -202,23 +237,13 @@ pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
         },
         None => return Response::err(crate::jrpc::Error::new(-32602, "Invalid params".to_string(), Some("No parameters specified".into())), request.id),
     };
-    //look up tool
-    let tools = TOOLS.lock().unwrap();
-    let tool = tools.iter()
-        .find(|t| t.name() == params.name)
-        .map(|t| t.as_ref())
-        .ok_or_else(|| crate::jrpc::Error::new(-32602, format!("Unknown tool: {}", params.name), None));
-    match tool {
-        Ok(tool) => {
-            let response = tool.call(params.arguments);
-            match response {
-                Ok(response) => Response::new(response, request.id),
-                Err(err) => Response::new(err.into_response(), request.id)
-            }
+    let r = call_imp(params);
+    match r {
+        Ok(r) => {
+            Response::new(r, request.id)
         }
-        Err(err) => {
-            return Response::err(err, request.id);
+        Err(e) => {
+            Response::err(e, request.id)
         }
     }
-
 }
