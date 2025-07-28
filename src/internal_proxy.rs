@@ -16,7 +16,8 @@ static INTERNAL_PROXY: LazyLock<InternalProxy> = LazyLock::new(|| {
 
 #[derive(Debug)]
 struct Mut {
-    bidirectional_proxy: Option<BidirectionalProxy<TcpStream>>
+    bidirectional_proxy: Option<BidirectionalProxy<TcpStream>>,
+    buffered_notifications: Vec<crate::jrpc::Notification>,
 }
 
 #[derive(Debug)]
@@ -48,6 +49,7 @@ impl InternalProxy {
 
         let m = Mut {
             bidirectional_proxy: bidirectional,
+            buffered_notifications: Vec::new(),
         };
 
         InternalProxy {
@@ -75,7 +77,7 @@ impl InternalProxy {
 
     pub fn send_notification(&self, notification: crate::jrpc::Notification) -> Result<(), Error> {
         let mut lock = self.m.lock().unwrap();
-        Self::reconnect_if_possible(&mut *lock);
+        Self::send_buffered_if_possible(&mut lock);
         match lock.bidirectional_proxy.as_mut() {
             Some(proxy) => {
                 let msg = serde_json::to_string(&notification).map_err(|_| NotConnected)?;
@@ -83,7 +85,27 @@ impl InternalProxy {
             }
             None => Err(NotConnected),
         }
+    }
+    pub fn buffer_notification(&self, notification: crate::jrpc::Notification) {
+        let mut lock = self.m.lock().unwrap();
+        lock.buffered_notifications.push(notification);
+        eprintln!("Buffered {} notifications", lock.buffered_notifications.len());
+        Self::send_buffered_if_possible(&mut lock);
+    }
 
+    fn send_buffered_if_possible(m: &mut Mut) {
+        Self::reconnect_if_possible(m);
+        match m.bidirectional_proxy.as_mut() {
+            Some(proxy) => {
+                for msg in m.buffered_notifications.drain(..) {
+                    let msg = serde_json::to_string(&msg).unwrap();
+                    proxy.send(msg.as_bytes()).unwrap();
+                }
+            }
+            None => {
+                //don't send
+            }
+        }
     }
 
     pub fn current() -> &'static InternalProxy {

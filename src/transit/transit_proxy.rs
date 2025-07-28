@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use std::io::{Write,Read};
 use crate::jrpc::{Request, Response};
+use crate::transit::log_proxy::LogProxy;
 
 pub struct Accept {
     bidirectional: crate::bidirectional_proxy::BidirectionalProxy<TcpStream>,
@@ -76,7 +77,7 @@ impl TransitProxy {
                 });
                 per_thread_shared_accept.lock().unwrap().latest_accept = Some(Accept { bidirectional: bidirectional_proxy, addr: stream.1});
 
-            });
+            }).unwrap();
         TransitProxy {
             shared_accept,
             message_receiver,
@@ -128,7 +129,9 @@ impl TransitProxy {
             "initialize" => {
                 return Ok(initialize(message).erase())
             }
-            _ => {}
+            _ => {
+
+            }
         }
         let mut shared = self.shared_accept.lock().unwrap();
         let request = serde_json::to_vec(&message).unwrap();
@@ -180,14 +183,28 @@ impl TransitProxy {
 
 impl SharedAccept {
     fn received_notification(&mut self, notification: crate::jrpc::Notification) {
-        (self.process_notifications)(notification);
+        //some notifications we process locally
+        match notification.method.as_str() {
+            "exfiltrate/logwise/new" => {
+                LogProxy::current().reset();
+            }
+            "exfiltrate/logwise/record" => {
+                LogProxy::current().add_log(notification.params.unwrap().to_string())
+            }
+            _ =>  {
+                (self.process_notifications)(notification);
+            }
+
+        }
     }
 
     fn new() -> Self {
         SharedAccept {
             latest_accept: None,
             buffered_messages: Vec::new(),
-            process_notifications: Box::new(|_notification| {}),
+            process_notifications: Box::new(|_notification| {
+                panic!("Notification arrived to unbound accept")
+            }),
         }
     }
 }

@@ -90,37 +90,30 @@ impl<T: Transport> BidirectionalProxy<T> {
                         Ok(size) if size > 0 => {
                             eprintln!("Read {} bytes from transport", size);
                             buf.truncate(size);
+
                             let mut partial_read = move_read.partial_read.lock().unwrap();
                             partial_read.add_bytes(&buf);
-                            let take = partial_read.pop_msg();
-                            drop(partial_read); // Release the lock before calling the callback
-                            match take {
-                                Some(msg) => {
-                                    // Call the provided function with the message
-                                    let buf = recv(msg);
-                                    match buf {
-                                        Some(buf) => {
-                                            // If the function returns a response, send it back
-                                            let size = buf.len() as u32;
-                                            let mut transport = move_read.transport.lock().unwrap();
-                                            let size_bytes = size.to_le_bytes();
-                                            transport.write_block(&size_bytes).unwrap();
-                                            transport.write_block(&buf).unwrap();
-                                            transport.flush().unwrap();
-                                        }
-                                        None => {
-                                            // If the function returns None, do nothing
-                                            continue;
-                                        }
+                            drop(partial_read);
+
+                            'next_msg: while let Some(msg) = move_read.partial_read.lock().unwrap().pop_msg() {
+                                // Call the provided function with the message
+                                let buf = recv(msg);
+                                match buf {
+                                    Some(buf) => {
+                                        // If the function returns a response, send it back
+                                        let size = buf.len() as u32;
+                                        let mut transport = move_read.transport.lock().unwrap();
+                                        let size_bytes = size.to_le_bytes();
+                                        transport.write_block(&size_bytes).unwrap();
+                                        transport.write_block(&buf).unwrap();
+                                        transport.flush().unwrap();
+                                    }
+                                    None => {
+                                        // If the function returns None, do nothing
+                                        continue;
                                     }
                                 }
-                                None => {
-                                    eprintln!("Not enough data to form a complete message, continuing to read...");
-                                    // Not enough data to form a complete message, continue reading
-                                    continue;
-                                }
                             }
-
                         }
                         Ok(_) => {
                             // No data read, continue to the next iteration

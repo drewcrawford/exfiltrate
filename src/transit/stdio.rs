@@ -8,12 +8,10 @@ impl Server {
         proxy.bind(move |msg| {
             let mut stdin = std::io::stdin();
             let mut stdout = std::io::stdout();
-            loop {
-                let bytes = serde_json::to_vec(&msg).unwrap();
-                stdout.write_all(&bytes).unwrap();
-                stdout.write_all(b"\n").unwrap();
-                stdout.flush().unwrap();
-            }
+            let bytes = serde_json::to_vec(&msg).unwrap();
+            stdout.write_all(&bytes).unwrap();
+            stdout.write_all(b"\n").unwrap();
+            stdout.flush().unwrap();
         });
         std::thread::Builder::new()
             .name("exfiltrate::stdio".to_string())
