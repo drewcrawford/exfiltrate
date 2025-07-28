@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use exfiltrate::tools::{Argument, InputSchema, ToolCallResponse};
+use exfiltrate::transit::transit_proxy::TransitProxy;
 
 pub struct MyTool {
 
@@ -50,7 +51,8 @@ impl exfiltrate::tools::Tool for EventualTool {
 }
 
 fn main() {
-    let server = exfiltrate::exfiltrate_up("127.0.0.1:1984");
+    let proxy = exfiltrate::transit::transit_proxy::TransitProxy::new();
+    let server = exfiltrate::transit::http::Server::new("127.0.0.1:1984",proxy);
     exfiltrate::tools::add_tool(Box::new(MyTool{}));
     std::thread::sleep(std::time::Duration::from_secs(10));
     //insert a new tool

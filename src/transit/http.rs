@@ -3,19 +3,9 @@ use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 use serde::Deserialize;
-use crate::jrpc::Request;
+use crate::jrpc::{Request,Response};
+use crate::transit::transit_proxy::TransitProxy;
 
-static ACTIVE_SESSIONS: LazyLock<Mutex<Vec<Mutex<MessageQueue>>>> = LazyLock::new(|| {
-    Mutex::new(Vec::new())
-});
-
-pub fn broadcast_message(message: &[u8]) {
-    let mut sessions = ACTIVE_SESSIONS.lock().unwrap();
-    // Iterate over the active sessions and send the message to each one
-    for session in sessions.iter_mut() {
-        session.lock().unwrap().send(&message);
-    }
-}
 
 #[derive(PartialEq)]
 enum ParseState {
@@ -26,6 +16,8 @@ enum ParseState {
 
 
 pub struct Server {
+    proxy: Arc<Mutex<TransitProxy>>,
+    active_sessions: Arc<Mutex<Vec<Mutex<MessageQueue>>>>,
 }
 
 pub struct MessageQueue {
@@ -54,18 +46,20 @@ impl MessageQueue {
 
 struct Session {
     stream: Option<TcpStream>,
+    proxy: Arc<Mutex<TransitProxy>>,
+    active_sessions: Arc<Mutex<Vec<Mutex<MessageQueue>>>>,
 }
 
 impl Session {
-    fn new(stream: std::net::TcpStream) -> Self {
+    fn new(stream: std::net::TcpStream, proxy: Arc<Mutex<TransitProxy>>, active_sessions: Arc<Mutex<Vec<Mutex<MessageQueue>>>>) -> Self {
         Session {
             stream: Some(stream),
+            proxy,
+            active_sessions,
         }
     }
 
     fn run(&mut self) {
-        //handle the connection
-
         let mut headers_buf = Vec::new();
         let mut read_buffer = [0; 1024];
         let mut parse_state = ParseState::Method;
@@ -84,7 +78,7 @@ impl Session {
                     break;
                 }
             }
-            if parse_state == crate::http::ParseState::Method {
+            if parse_state == crate::transit::http::ParseState::Method {
                 // If we are in the method state, we expect to read the request line
                 if let Some(pos) = read_slice.iter().position(|&b| b == b'\n') {
                     // We have a complete request line
@@ -96,7 +90,7 @@ impl Session {
                     method = Some(method_str.to_string());
                     url = Some(url_str.to_string());
                     println!("Method: {method:?}, URL: {url:?}");
-                    parse_state = crate::http::ParseState::Headers;
+                    parse_state = crate::transit::http::ParseState::Headers;
                     //advance the read_slice
                     read_slice = &read_slice[pos + 1..];
                 } else {
@@ -104,7 +98,7 @@ impl Session {
                     continue;
                 }
             }
-            if parse_state == crate::http::ParseState::Headers {
+            if parse_state == crate::transit::http::ParseState::Headers {
                 //search for '\r\n\r\n' to find the end of headers
                 if let Some(pos) = read_slice.windows(4).position(|window| window == b"\r\n\r\n") {
                     // We have a complete header block
@@ -119,9 +113,7 @@ impl Session {
                         self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
                         //set up the message queue
                         let message_queue = MessageQueue::new(self.stream.take().unwrap());
-                        let mut sessions = ACTIVE_SESSIONS.lock().unwrap();
-                        // Add the new session to the active sessions
-                        sessions.push(Mutex::new(message_queue));
+                        self.active_sessions.lock().unwrap().push(Mutex::new(message_queue));
                         return; //promoted to active session
                     }
                     else if url.as_ref().unwrap() != "/" {
@@ -133,7 +125,7 @@ impl Session {
                         // Reset for next request
                         headers_buf.clear();
                         body.clear();
-                        parse_state = crate::http::ParseState::Method;
+                        parse_state = crate::transit::http::ParseState::Method;
                         continue; // continue to the next iteration
 
                     }
@@ -150,7 +142,7 @@ impl Session {
                     }
 
 
-                    parse_state = crate::http::ParseState::Body(content_length.expect("content-length header not found"));
+                    parse_state = crate::transit::http::ParseState::Body(content_length.expect("content-length header not found"));
                     //advance the read_slice
                     read_slice = &read_slice[pos + 4..];
                 } else {
@@ -159,7 +151,7 @@ impl Session {
                     continue;
                 }
             }
-            if let crate::http::ParseState::Body(content_length) = parse_state {
+            if let crate::transit::http::ParseState::Body(content_length) = parse_state {
                 // We are in the body state, we expect to read the body
                 if read_slice.len() >= content_length {
                     // We have a complete body
@@ -172,7 +164,7 @@ impl Session {
                     // Reset for next request
                     headers_buf.clear();
                     body.clear();
-                    parse_state = crate::http::ParseState::Method;
+                    parse_state = crate::transit::http::ParseState::Method;
                 } else {
                     // We don't have a complete body yet, continue reading
                     body.extend_from_slice(read_slice);
@@ -191,17 +183,23 @@ impl Session {
 
         match parse_request {
             Ok(request) => {
+                let request_id = request.id.clone();
                 let stream = self.stream.as_mut().unwrap();
-                //dispatch
-                let response = crate::mcp::dispatch(request);
-                let json_response_bytes = serde_json::to_vec(&response).expect("Failed to serialize JSON-RPC response");
+                let response = match self.proxy.lock().unwrap().send_request(request.clone()) {
+                    Ok(response) => response,
+                    Err(e) => {
+                        eprintln!("Error sending request to proxy: {}", e);
+                        Response::err(crate::jrpc::Error::new(-32001, format!("{e:?}"), None), request_id)
+                    }
+                };
+                let response = serde_json::to_vec(&response).expect("Failed to serialize JSON-RPC response");
                 // Write the response back to the stream
                 stream.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ").unwrap();
-                stream.write(json_response_bytes.len().to_string().as_bytes()).unwrap();
+                stream.write(response.len().to_string().as_bytes()).unwrap();
                 stream.write(b"\r\n\r\n").unwrap();
-                stream.write(&json_response_bytes).unwrap();
+                stream.write(&response).unwrap();
                 stream.flush().unwrap();
-                println!("Sent response: {:?}", response);
+                println!("Sent response: {:?}", String::from_utf8_lossy(&response));
             }
             Err(e) => {
 
@@ -220,31 +218,35 @@ impl Session {
 }
 
 impl Server {
-    pub fn new<A: ToSocketAddrs>(addr: A) -> Self {
+    pub fn new<A: ToSocketAddrs>(addr: A, proxy: TransitProxy) -> Self {
         //listen on a tcp socket
         let listener = std::net::TcpListener::bind(addr).unwrap();
-        println!("Listening on {}", listener.local_addr().unwrap());
+        let proxy = Arc::new(Mutex::new(proxy));
+        println!("MCP/HTTP Listening on {}", listener.local_addr().unwrap());
+        let active_sessions = Arc::new(Mutex::new(Vec::new()));
+        let move_proxy = proxy.clone();
         std::thread::Builder::new()
             .name("exfiltrate-server".to_string()).spawn(move || {
 
             loop {
                 let (stream,addr) = listener.accept().unwrap();
-                Self::on_accept(stream, addr);
+                Self::on_accept(stream, addr, move_proxy.clone(), active_sessions.clone());
             }
         }).unwrap();
         Server {
-
+            proxy,
+            active_sessions: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
-    fn on_accept(stream: std::net::TcpStream, addr: std::net::SocketAddr) {
+    fn on_accept(stream: std::net::TcpStream, addr: std::net::SocketAddr, proxy: Arc<Mutex<TransitProxy>>, sessions: Arc<Mutex<Vec<Mutex<MessageQueue>>>>) {
         //start a new thread to handle the connection
         println!("Accepted connection from {}", addr);
 
         std::thread::Builder::new()
             .name(format!("exfiltrate-server-{}", addr))
             .spawn(move || {
-                let mut session = Session::new(stream);
+                let mut session = Session::new(stream,proxy, sessions);
                 session.run();
 
             }).unwrap();

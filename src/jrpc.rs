@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(serde::Deserialize,Debug)]
+#[derive(serde::Deserialize,serde::Serialize,Debug,Clone)]
 pub struct Request {
     pub jsonrpc: String,
     pub method: String,
@@ -8,14 +8,24 @@ pub struct Request {
     pub id: serde_json::Value,
 }
 
-#[derive(serde::Deserialize,Debug)]
+#[derive(serde::Deserialize,serde::Serialize, Debug)]
 pub struct Notification {
     pub jsonrpc: String,
     pub method: String,
     pub params: Option<serde_json::Value>,
 }
 
-#[derive(Debug, serde::Serialize)]
+impl Notification {
+    pub fn new(method: String, params: Option<serde_json::Value>) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            method,
+            params,
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize,serde::Deserialize)]
 pub struct Response<R> {
     pub jsonrpc: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,7 +65,7 @@ impl<R> Response<R> {
 }
 
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize,serde::Deserialize)]
 pub struct Error {
     pub code: i32,
     pub message: String,

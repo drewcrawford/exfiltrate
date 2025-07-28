@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, RwLock};
 use serde::{Serialize, Serializer};
-use crate::http::broadcast_message;
-use crate::jrpc::{Request, Response};
-use crate::mcp::InitializeResult;
+use crate::internal_proxy::InternalProxy;
+use crate::jrpc::{Request, Error, Response, Notification};
 
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
@@ -23,6 +22,12 @@ pub static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
 #[derive(Debug, serde::Serialize)]
 pub struct ToolList {
     tools: Vec<ToolInfo>,
+}
+
+impl ToolList {
+    pub fn empty() -> Self {
+        ToolList { tools: Vec::new() }
+    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -116,8 +121,18 @@ pub(crate) fn list(request: Request) -> Response<ToolList> {
 pub fn add_tool(tool: Box<dyn Tool>) {
     TOOLS.write().unwrap().push(tool);
     //create a tool changed message
-    let json_rpc = r#"{ "jsonrpc": "2.0","method": "notifications/tools/list_changed"}"#;
-    broadcast_message(json_rpc.as_bytes());
+    let n = Notification::new("notifications/tools/list_changed".to_string(), None);
+    let r = InternalProxy::current().send_notification(n);
+    match r {
+        Ok(_) => {},
+        Err(crate::internal_proxy::Error::NotConnected) => {
+            //benign
+        }
+        Err(other) => {
+            eprintln!("Error sending notification: {other:?}")
+        }
+    }
+
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -209,7 +224,7 @@ impl From<&str> for ToolContent {
     }
 }
 
-pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse,crate::jrpc::Error>  {
+pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse, crate::jrpc::Error>  {
     //look up tool
     let tools = TOOLS.read().unwrap();
     let tool = tools.iter()
@@ -224,7 +239,7 @@ pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse,crate:
             }
         }
         None => {
-            Err(crate::jrpc::Error::new(-32602, format!("Unknown tool: {}", params.name), None))
+            Err(Error::new(-32602, format!("Unknown tool: {}", params.name), None))
         }
     }
 }
@@ -233,9 +248,9 @@ pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
     let params = match request.params {
         Some(params) => match serde_json::from_value::<ToolCallParams>(params) {
             Ok(params) => params,
-            Err(err) => return Response::err(crate::jrpc::Error::new(-32602, "Invalid params".to_string(), Some(err.to_string().into())), request.id),
+            Err(err) => return Response::err(Error::new(-32602, "Invalid params".to_string(), Some(err.to_string().into())), request.id),
         },
-        None => return Response::err(crate::jrpc::Error::new(-32602, "Invalid params".to_string(), Some("No parameters specified".into())), request.id),
+        None => return Response::err(Error::new(-32602, "Invalid params".to_string(), Some("No parameters specified".into())), request.id),
     };
     let r = call_imp(params);
     match r {
