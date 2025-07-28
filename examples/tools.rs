@@ -25,8 +25,36 @@ impl exfiltrate::tools::Tool for MyTool {
     }
 }
 
+pub struct LateTool {
+
+}
+impl exfiltrate::tools::Tool for LateTool {
+    fn name(&self) -> &str {
+        "late_tool"
+    }
+
+    fn description(&self) -> &str {
+        "A tool that arrives late"
+    }
+
+
+    fn call(&self, params: HashMap<String, serde_json::Value>) -> Result<ToolCallResponse, exfiltrate::tools::ToolCallError> {
+        let params = params.get("input")
+            .and_then(|v| v.as_f64())
+            .ok_or_else(|| exfiltrate::tools::ToolCallError::new(vec!["Invalid input parameter".into()]))?;
+        Ok(ToolCallResponse::new(vec![format!("This is a response from my tool: {}", params).into()]))
+    }
+    fn input_schema(&self) -> exfiltrate::mcp::tools::InputSchema {
+        InputSchema::new(vec![Argument::new("input".to_string(), "number".to_string(), "Your favorite number".to_string(), true)])
+    }
+}
+
 fn main() {
     let server = exfiltrate::exfiltrate_up("127.0.0.1:1984");
     exfiltrate::tools::add_tool(Box::new(MyTool{}));
+    std::thread::sleep(std::time::Duration::from_secs(10));
+    //insert a new tool
+    exfiltrate::tools::add_tool(Box::new(LateTool {}));
+    println!("Added late tool");
     std::thread::sleep(std::time::Duration::from_secs(1000));
 }

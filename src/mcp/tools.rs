@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use serde::{Serialize, Serializer};
+use crate::http::broadcast_message;
 use crate::jrpc::{Request, Response};
 use crate::mcp::InitializeResult;
 
@@ -107,6 +108,9 @@ pub fn list(request: Request) -> Response<ToolList> {
 
 pub fn add_tool(tool: Box<dyn Tool>) {
     TOOLS.lock().unwrap().push(tool);
+    //create a tool changed message
+    let json_rpc = r#"{ "jsonrpc": "2.0","method": "notifications/tools/list_changed"}"#;
+    broadcast_message(json_rpc.as_bytes());
 }
 
 #[derive(Debug, serde::Deserialize)]

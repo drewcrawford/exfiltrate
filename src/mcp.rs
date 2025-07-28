@@ -34,13 +34,14 @@ impl InitializeResult {
     fn new() -> Self {
         let mut server_info = HashMap::new();
         server_info.insert("name".to_string(), "exfiltrate".into());
-        server_info.insert("version".to_string(), "1.0.0".into());
+        server_info.insert("version".to_string(), "0.1.0".into());
 
         let mut capabilities = HashMap::new();
-        capabilities.insert("logging".to_string(), HashMap::new());
-        capabilities.insert("tools".to_string(), HashMap::new());
+        let mut tool_capabilities = HashMap::new();
+        tool_capabilities.insert("listChanged".to_string(), true.into());
+        capabilities.insert("tools".to_string(), tool_capabilities);
         InitializeResult {
-            protocol_version: "2025-03-26".to_string(),
+            protocol_version: "2025-06-18".to_string(),
             capabilities,
             server_info,
 
