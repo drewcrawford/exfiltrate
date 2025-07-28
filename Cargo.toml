@@ -13,5 +13,15 @@ name = "tools"
 path = "examples/tools.rs"
 required-features = ["transit"]
 
+[[example]]
+name = "disconnected"
+path = "examples/disconnected.rs"
+required-features = ["transit"]
+
+[[example]]
+name = "stdio"
+path = "examples/stdio.rs"
+required-features = ["transit"]
+
 [features]
 transit = []

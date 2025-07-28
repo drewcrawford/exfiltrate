@@ -37,7 +37,7 @@ impl MessageQueue {
             self.stream.write("data: ".as_bytes()).unwrap();
             self.stream.write(line.as_bytes()).unwrap();
             self.stream.write("\r\n".as_bytes()).unwrap();
-            println!("Sent message to {:?}: {}", self.stream.peer_addr(),format!("data: {}", line));
+            eprintln!("Sent message to {:?}: {}", self.stream.peer_addr(),format!("data: {}", line));
         }
         self.stream.write("\r\n\r\n".as_bytes()).unwrap(); // End of message
         self.stream.flush().expect("Failed to flush stream");
@@ -89,7 +89,7 @@ impl Session {
                     let (url_str, _) = rest.split_once(' ').expect("Error parsing request line");
                     method = Some(method_str.to_string());
                     url = Some(url_str.to_string());
-                    println!("Method: {method:?}, URL: {url:?}");
+                    eprintln!("Method: {method:?}, URL: {url:?}");
                     parse_state = crate::transit::http::ParseState::Headers;
                     //advance the read_slice
                     read_slice = &read_slice[pos + 1..];
@@ -104,7 +104,7 @@ impl Session {
                     // We have a complete header block
                     let headers = &read_slice[..pos];
                     headers_buf.extend_from_slice(headers);
-                    println!("Headers: {}", String::from_utf8_lossy(&headers_buf));
+                    eprintln!("Headers: {}", String::from_utf8_lossy(&headers_buf));
 
                     if method.as_ref().unwrap() == "GET" && url.as_ref().unwrap() == "/" {
                         //begin response
@@ -121,7 +121,7 @@ impl Session {
                         let response = b"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found";
                         self.stream.as_mut().unwrap().write_all(response).expect("Failed to write 404 response");
                         self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
-                        println!("Sent 404 Not Found response");
+                        eprintln!("Sent 404 Not Found response");
                         // Reset for next request
                         headers_buf.clear();
                         body.clear();
@@ -157,7 +157,7 @@ impl Session {
                     // We have a complete body
                     body.extend_from_slice(&read_slice[..content_length]);
                     let body_str = String::from_utf8_lossy(&body);
-                    println!("Body: {}", body_str);
+                    eprintln!("Body: {}", body_str);
 
                     self.handle_body(&body);
 
@@ -178,42 +178,27 @@ impl Session {
 
 
     fn handle_body(&mut self, body: &[u8]) {
-        // Parse the body as a JSON-RPC request
-        let parse_request: Result<Request,_> = serde_json::from_slice(&body);
-
-        match parse_request {
-            Ok(request) => {
-                let request_id = request.id.clone();
-                let stream = self.stream.as_mut().unwrap();
-                let response = match self.proxy.lock().unwrap().send_request(request.clone()) {
-                    Ok(response) => response,
-                    Err(e) => {
-                        eprintln!("Error sending request to proxy: {}", e);
-                        Response::err(crate::jrpc::Error::new(-32001, format!("{e:?}"), None), request_id)
-                    }
-                };
-                let response = serde_json::to_vec(&response).expect("Failed to serialize JSON-RPC response");
+        let r = self.proxy.lock().unwrap().received_data(body);
+        match r {
+            Some(response) => {
+                let as_bytes = serde_json::to_vec(&response).unwrap();
+                let mut stream = self.stream.as_mut().unwrap();
                 // Write the response back to the stream
                 stream.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ").unwrap();
-                stream.write(response.len().to_string().as_bytes()).unwrap();
+                stream.write(as_bytes.len().to_string().as_bytes()).unwrap();
                 stream.write(b"\r\n\r\n").unwrap();
-                stream.write(&response).unwrap();
+                stream.write(&as_bytes).unwrap();
                 stream.flush().unwrap();
-                println!("Sent response: {:?}", String::from_utf8_lossy(&response));
+                eprintln!("Sent response: {:?}", String::from_utf8_lossy(&as_bytes));
             }
-            Err(e) => {
-
-                //try parsing as a notification
-                let parse_notification: crate::jrpc::Notification = serde_json::from_slice(&body).expect("Failed to parse JSON-RPC notification");
-                println!("Parsed notification: {:?}", parse_notification);
-                if parse_notification.method == "notifications/initialized" {
-                    self.initial_setup();
-                }
-                let stream = self.stream.as_mut().unwrap();
-                //write a 202 Accepted OK response
+            None => {
+                let mut stream = self.stream.as_mut().unwrap();
                 stream.write("HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n".as_bytes()).unwrap();
+                stream.flush().unwrap();
             }
         }
+
+
     }
 }
 
@@ -222,7 +207,7 @@ impl Server {
         //listen on a tcp socket
         let listener = std::net::TcpListener::bind(addr).unwrap();
         let proxy = Arc::new(Mutex::new(proxy));
-        println!("MCP/HTTP Listening on {}", listener.local_addr().unwrap());
+        eprintln!("MCP/HTTP Listening on {}", listener.local_addr().unwrap());
         let active_sessions = Arc::new(Mutex::new(Vec::new()));
         let move_proxy = proxy.clone();
         std::thread::Builder::new()
@@ -241,7 +226,7 @@ impl Server {
 
     fn on_accept(stream: std::net::TcpStream, addr: std::net::SocketAddr, proxy: Arc<Mutex<TransitProxy>>, sessions: Arc<Mutex<Vec<Mutex<MessageQueue>>>>) {
         //start a new thread to handle the connection
-        println!("Accepted connection from {}", addr);
+        eprintln!("Accepted connection from {}", addr);
 
         std::thread::Builder::new()
             .name(format!("exfiltrate-server-{}", addr))

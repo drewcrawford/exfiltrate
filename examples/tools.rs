@@ -57,6 +57,6 @@ fn main() {
     std::thread::sleep(std::time::Duration::from_secs(10));
     //insert a new tool
     exfiltrate::tools::add_tool(Box::new(EventualTool {}));
-    println!("Added late tool");
+    eprintln!("Added late tool");
     std::thread::sleep(std::time::Duration::from_secs(1000));
 }

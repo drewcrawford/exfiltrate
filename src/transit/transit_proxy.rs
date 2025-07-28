@@ -93,6 +93,35 @@ impl TransitProxy {
 }
 
 impl TransitProxy {
+    pub fn received_data(&mut self, data: &[u8]) -> Option<Response<serde_json::Value>> {
+        let parse_request: Result<Request,_> = serde_json::from_slice(&data);
+        match parse_request {
+            Ok(request) => {
+                let request_id = request.id.clone();
+                let response = self.send_request(request);
+
+                let r = match response {
+                    Ok(response) => response,
+                    Err(e) => {
+                        eprintln!("Error sending request to proxy: {}", e);
+                        Response::err(crate::jrpc::Error::new(-32001, format!("{e:?}"), None), request_id)
+                    }
+                };
+                Some(r)
+
+            }
+            Err(e) => {
+
+                //try parsing as a notification
+                let parse_notification: crate::jrpc::Notification = serde_json::from_slice(&data).expect("Failed to parse JSON-RPC notification");
+                eprintln!("Parsed notification: {:?}", parse_notification);
+                if parse_notification.method == "notifications/initialized" {
+                    self.initial_setup();
+                }
+                None
+            }
+        }
+    }
     pub fn send_request(&mut self, message: crate::jrpc::Request) -> Result<crate::jrpc::Response<serde_json::Value>,Error> {
         // some things we do locally always
         match message.method.as_str() {
@@ -116,6 +145,10 @@ impl TransitProxy {
             }
             None => return Self::local_fallback(message),
         }
+    }
+
+    fn initial_setup(&mut self) {
+
     }
 
     fn local_fallback(message: crate::jrpc::Request) -> Result<crate::jrpc::Response<serde_json::Value>, Error> {

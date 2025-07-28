@@ -88,7 +88,7 @@ impl<T: Transport> BidirectionalProxy<T> {
                     let f = move_read.transport.lock().unwrap().read_nonblock(&mut buf);
                     match f {
                         Ok(size) if size > 0 => {
-                            println!("Read {} bytes from transport", size);
+                            eprintln!("Read {} bytes from transport", size);
                             buf.truncate(size);
                             let mut partial_read = move_read.partial_read.lock().unwrap();
                             partial_read.add_bytes(&buf);
@@ -142,7 +142,7 @@ impl<T: Transport> BidirectionalProxy<T> {
         //write size
         let size = data.len() as u32;
         let size_bytes = size.to_le_bytes();
-        println!("sending size_bytes : {:?}", size_bytes);
+        eprintln!("sending size_bytes : {:?}", size_bytes);
         let mut transport = self.move_read.transport.lock().unwrap();
         transport.write_block(&size_bytes).unwrap();
         transport.write_block(&data).unwrap();
