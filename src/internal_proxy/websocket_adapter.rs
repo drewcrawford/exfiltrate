@@ -1,6 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 
 use std::fmt::Display;
+use std::time::Duration;
 use crate::bidirectional_proxy::Transport;
 
 #[derive(Debug)]
@@ -24,14 +25,18 @@ impl Display for Error {
 const ADDR: &str = "ws://localhost:1986";
 
 impl WebsocketAdapter {
-    pub fn new() -> Result<Self, Error> {
+    //this function must absolutely be async.
+    //spinloop-based approaches empirically do not work in the browser.
+    pub async fn new() -> Result<Self, Error> {
         //put ws communication on its own thread
         let (s,r) = std::sync::mpsc::channel();
 
         crate::sys::thread::Builder::new()
             .name("exfiltrate::WebsocketAdapter".to_owned())
             .spawn(move || {
+                logwise::info_sync!("Thread started");
                 let ws = web_sys::WebSocket::new(ADDR);
+                logwise::info_sync!("Got result {ws}", ws=logwise::privacy::LogIt(&ws));
                 match ws {
                     Ok(ws) => {
                         s.send(Ok(())).unwrap();
@@ -41,15 +46,39 @@ impl WebsocketAdapter {
                     }
                 }
             }).unwrap();
-        match r.recv().unwrap() {
-            Ok(_) => {
-                Ok(WebsocketAdapter {})
-            }
-            Err(e) => {
-                logwise::error_sync!("WebsocketAdapter: Failed to connect with error: {e}", e=logwise::privacy::LogIt(&e));
-                Err(e)
+        //spin loop
+        let mut perf = None;
+        loop {
+            // logwise::info_sync!("Will spin until WebsocketAdapter is connected");
+            let r = r.try_recv();
+            // logwise::info_sync!("Completed recv");
+            match r {
+                Ok(inner) => {
+                    match inner {
+                        Ok(()) => {
+                            return Ok(WebsocketAdapter {})
+
+                        }
+                        Err(e) => {
+                            logwise::error_sync!("WebsocketAdapter: Failed to connect with error: {e}", e=logwise::privacy::LogIt(&e));
+                            return Err(e)
+                        }
+                    }
+                }
+                Err(e) => {
+                    // logwise::info_sync!("WebsocketAdapter: WebsocketAdapter: error {e}", e=logwise::privacy::LogIt(&e));
+                    #[cfg(feature = "logwise")] {
+                        if perf.is_none() {
+                            perf = Some(logwise::perfwarn_begin!("exfiltrate::WebsocketAdapter::new spin"));
+                        }
+                    }
+                    #[cfg(not(feature = "logwise"))] {
+                        perf = Some((())); //infer a type
+                    }
+                }
             }
         }
+    //     Ok(WebsocketAdapter {})
     }
 }
 

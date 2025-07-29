@@ -1,8 +1,6 @@
-use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 use serde_json::Value;
-use log::log;
 use crate::tools::{Argument, InputSchema, Tool, ToolCallError, ToolCallResponse};
 
 static CURRENT_LOGPROXY: LazyLock<LogProxy> = LazyLock::new(|| {
@@ -146,7 +144,7 @@ impl Tool for LogwiseGrep {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolCallError::new(vec!["No pattern".into()]))?;
 
-        let regex = regex::Regex::new(pattern).map_err(|e| ToolCallError::new(vec!["Invalid regex".into()]))?;
+        let regex = regex::Regex::new(pattern).map_err(|_| ToolCallError::new(vec!["Invalid regex".into()]))?;
         let log_proxy = LogProxy::current().logs.lock().unwrap();
 
 

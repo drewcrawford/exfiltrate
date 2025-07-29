@@ -110,16 +110,6 @@ impl InputSchema {
     }
 }
 
-impl ToolInfo {
-    fn new(name: String, description: String, input_schema: InputSchema) -> Self {
-        ToolInfo {
-            name,
-            description,
-            input_schema,
-        }
-    }
-}
-
 pub(crate) fn list_int() -> ToolList {
     let tool_infos: Vec<ToolInfo> = TOOLS.read().unwrap().iter().chain(SHARED_TOOLS.iter()).map(|tool| ToolInfo::from_tool(tool.as_ref())).collect();
     let tool_list = ToolList {
@@ -148,9 +138,6 @@ pub fn add_tool(tool: Box<dyn Tool>) {
         Ok(_) => {},
         Err(crate::internal_proxy::Error::NotConnected) => {
             //benign
-        }
-        Err(other) => {
-            eprintln!("Error sending notification: {other:?}")
         }
     }
 
@@ -245,8 +232,6 @@ impl<'de> Deserialize<'de> for ToolContent {
         D: Deserializer<'de>,
     {
         use serde::de;
-        enum Field { Type, Text, Unknown }
-
         struct ToolContentVisitor;
 
         impl<'de> Visitor<'de> for ToolContentVisitor {

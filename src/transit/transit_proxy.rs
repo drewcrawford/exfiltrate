@@ -2,7 +2,6 @@ use std::net::TcpStream;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::Arc;
-use std::io::{Write,Read};
 use crate::jrpc::{Request, Response};
 use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
 use crate::transit::log_proxy::LogProxy;
@@ -15,7 +14,6 @@ pub struct Accept {
 
 pub struct SharedAccept {
     latest_accept: Option<Accept>,
-    buffered_messages: Vec<Box<[u8]>>,
     process_notifications: Box<dyn Fn(crate::jrpc::Notification) + Send + Sync>,
 }
 
@@ -59,7 +57,7 @@ impl TransitProxy {
                             message_sender.send(response).unwrap();
                             None // We don't need to send a response back, just notify the receiver
                         }
-                        Err(e) => {
+                        Err(_) => {
                             //try parsing as notification instead
                             let notification: Result<crate::jrpc::Notification, _> = serde_json::from_slice(&msg);
                             match notification {
@@ -112,7 +110,7 @@ impl TransitProxy {
                 Some(r)
 
             }
-            Err(e) => {
+            Err(_) => {
 
                 //try parsing as a notification
                 let parse_notification: crate::jrpc::Notification = serde_json::from_slice(&data).expect("Failed to parse JSON-RPC notification");
@@ -152,7 +150,7 @@ impl TransitProxy {
                                 accept.bidirectional.send(&serde_json::to_vec(&response).unwrap())?;
                                 return Ok(response);
                             }
-                            Err(e) => {
+                            Err(_) => {
                                 //fallthrough to remote call
                             }
                         }
@@ -270,7 +268,7 @@ impl TransitProxy {
         }
     }
 
-    pub fn send_notification(&mut self, message: crate::jrpc::Notification) {
+    pub fn send_notification(&mut self, _message: crate::jrpc::Notification) {
         todo!();
     }
 }
@@ -295,7 +293,6 @@ impl SharedAccept {
     fn new() -> Self {
         SharedAccept {
             latest_accept: None,
-            buffered_messages: Vec::new(),
             process_notifications: Box::new(|_notification| {
                 panic!("Notification arrived to unbound accept")
             }),

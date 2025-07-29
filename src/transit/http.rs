@@ -1,9 +1,6 @@
-use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::sync::{Arc, LazyLock, Mutex, Weak};
-use serde::Deserialize;
-use crate::jrpc::{Request,Response};
+use std::sync::{Arc, Mutex};
 use crate::transit::transit_proxy::TransitProxy;
 
 
@@ -16,8 +13,6 @@ enum ParseState {
 
 
 pub struct Server {
-    proxy: Arc<Mutex<TransitProxy>>,
-    active_sessions: Arc<Mutex<Vec<Mutex<MessageQueue>>>>,
 }
 
 pub struct MessageQueue {
@@ -173,16 +168,12 @@ impl Session {
         }
     }
 
-    fn initial_setup(&mut self) {
-    }
-
-
     fn handle_body(&mut self, body: &[u8]) {
         let r = self.proxy.lock().unwrap().received_data(body);
         match r {
             Some(response) => {
                 let as_bytes = serde_json::to_vec(&response).unwrap();
-                let mut stream = self.stream.as_mut().unwrap();
+                let stream = self.stream.as_mut().unwrap();
                 // Write the response back to the stream
                 stream.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ").unwrap();
                 stream.write(as_bytes.len().to_string().as_bytes()).unwrap();
@@ -192,7 +183,7 @@ impl Session {
                 eprintln!("Sent response: {:?}", String::from_utf8_lossy(&as_bytes));
             }
             None => {
-                let mut stream = self.stream.as_mut().unwrap();
+                let stream = self.stream.as_mut().unwrap();
                 stream.write("HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n".as_bytes()).unwrap();
                 stream.flush().unwrap();
             }
@@ -219,8 +210,6 @@ impl Server {
             }
         }).unwrap();
         Server {
-            proxy,
-            active_sessions: Arc::new(Mutex::new(Vec::new())),
         }
     }
 

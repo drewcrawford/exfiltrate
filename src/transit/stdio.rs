@@ -6,7 +6,6 @@ pub struct Server {
 impl Server {
     pub fn new(mut proxy: TransitProxy) -> Self {
         proxy.bind(move |msg| {
-            let mut stdin = std::io::stdin();
             let mut stdout = std::io::stdout();
             let bytes = serde_json::to_vec(&msg).unwrap();
             stdout.write_all(&bytes).unwrap();
@@ -16,7 +15,7 @@ impl Server {
         std::thread::Builder::new()
             .name("exfiltrate::stdio".to_string())
             .spawn(move || {
-                let mut stdin = std::io::stdin();
+                let stdin = std::io::stdin();
                 loop {
                     let mut buffer = String::new();
                     if stdin.read_line(&mut buffer).is_err() {

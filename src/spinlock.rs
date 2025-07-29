@@ -15,7 +15,16 @@ impl<T> Spinlock<T> {
     }
 
     fn lock(&self) {
+        let mut spinlock = None;
         while self.lock.compare_exchange_weak(false, true, std::sync::atomic::Ordering::Acquire, std::sync::atomic::Ordering::Relaxed).is_err() {
+            #[cfg(feature="logwise")] {
+                if spinlock.is_none() {
+                    spinlock = Some(logwise::perfwarn_begin!("exfiltrate::spinlock::Spinlock::lock"));
+                }
+            }
+            #[cfg(not(feature="logwise"))] {
+                spinlock = Some(()); // infer a type
+            }
             std::hint::spin_loop();
         }
     }

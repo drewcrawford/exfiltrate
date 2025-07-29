@@ -20,7 +20,7 @@ Returns a list of tools that are available in the proxy application.
 This includes both the tools that are proxy-only and tools that are shared.
 */
 pub fn proxy_tools() -> ToolList {
-    let mut tools = crate::tools::SHARED_TOOLS.iter()
+    let tools = crate::tools::SHARED_TOOLS.iter()
         .chain(PROXY_ONLY_TOOLS.iter())
         .map(|tool| ToolInfo::from_tool(tool.as_ref()))
         .collect::<Vec<_>>();

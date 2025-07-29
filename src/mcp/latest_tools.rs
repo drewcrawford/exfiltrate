@@ -18,7 +18,7 @@ impl Tool for LatestTools {
         To run a tool discovered by this tool, use the `run_latest_tool` tool."
     }
 
-    fn call(&self, params: std::collections::HashMap<String, serde_json::Value>) -> Result<crate::tools::ToolCallResponse, crate::tools::ToolCallError> {
+    fn call(&self, _params: std::collections::HashMap<String, serde_json::Value>) -> Result<crate::tools::ToolCallResponse, crate::tools::ToolCallError> {
         let tools = crate::mcp::tools::list_int();
         let text = serde_json::to_string(&tools).unwrap();
         Ok(crate::tools::ToolCallResponse::new(vec![text.into()]))

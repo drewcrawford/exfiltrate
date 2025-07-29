@@ -82,13 +82,6 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 impl Error {
-    fn new(code: i32, message: String, data: Option<serde_json::Value>) -> Self {
-        Self {
-            code,
-            message,
-            data,
-        }
-    }
 
     pub fn method_not_found() -> Self {
         Self {

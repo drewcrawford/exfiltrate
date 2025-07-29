@@ -1,7 +1,7 @@
 mod websocket_adapter;
 
 use std::net::TcpStream;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock};
 use crate::internal_proxy::Error::NotConnected;
 use crate::bidirectional_proxy::BidirectionalProxy;
 use crate::spinlock::Spinlock;
