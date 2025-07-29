@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 use exfiltrate::tools::{Argument, InputSchema, ToolCallResponse};
 use exfiltrate::transit::transit_proxy::TransitProxy;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time;
+#[cfg(target_arch = "wasm32")]
+use web_time as time;
 
 pub struct MyTool {
 
@@ -54,9 +58,9 @@ fn main() {
     let proxy = exfiltrate::transit::transit_proxy::TransitProxy::new();
     let server = exfiltrate::transit::http::Server::new("127.0.0.1:1984",proxy);
     exfiltrate::tools::add_tool(Box::new(MyTool{}));
-    std::thread::sleep(std::time::Duration::from_secs(10));
+    std::thread::sleep(time::Duration::from_secs(10));
     //insert a new tool
     exfiltrate::tools::add_tool(Box::new(EventualTool {}));
     eprintln!("Added late tool");
-    std::thread::sleep(std::time::Duration::from_secs(1000));
+    std::thread::sleep(time::Duration::from_secs(1000));
 }

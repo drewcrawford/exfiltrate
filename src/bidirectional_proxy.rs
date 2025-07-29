@@ -131,7 +131,7 @@ impl<T: Transport> BidirectionalProxy<T> {
                     drop(transport);
                     drop(partial_read);
                     //before the next iteration, let's sleep a bit
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    std::thread::sleep(crate::sys::time::Duration::from_millis(100));
                 }
                 //exit main loop
             }).unwrap();
