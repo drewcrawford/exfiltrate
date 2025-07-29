@@ -61,7 +61,7 @@ pub fn call_proxy_tool(params: ToolCallParams) -> Result<ToolCallResponse, crate
             Err(e) => Ok(e.into_response())
         }
     } else {
-        Err(crate::jrpc::Error::invalid_params("No tool found with the given name".to_string()))
+        Err(crate::jrpc::Error::invalid_params(format!("No tool found with the name {}", params.name)))
     }
 }
 
@@ -78,6 +78,6 @@ pub fn call_proxy_only_tool(params: ToolCallParams) -> Result<ToolCallResponse, 
             Err(e) => Ok(e.into_response())
         }
     } else {
-        Err(crate::jrpc::Error::invalid_params("No tool found with the given name".to_string()))
+        Err(crate::jrpc::Error::invalid_params(format!("No tool found with the name {}", params.name)))
     }
 }

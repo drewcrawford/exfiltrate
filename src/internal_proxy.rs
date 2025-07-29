@@ -27,13 +27,14 @@ pub struct InternalProxy {
 
 fn bidi_fn(msg: Box<[u8]>) -> Option<Box<[u8]>> {
     //attempt parse as request
+    eprintln!("ip: received bidi message: {:?}", String::from_utf8_lossy(&msg));
     let request: Result<crate::jrpc::Request, _> = serde_json::from_slice(&msg);
     match request {
         Ok(request) => {
-            eprintln!("Received request from internal proxy: {:?}", request);
+            eprintln!("ip: received request: {:?}", request);
             let response = crate::mcp::dispatch_in_target(request);
             let response_bytes = serde_json::to_vec(&response).unwrap();
-            eprintln!("Sending response from internal proxy {:?}", String::from_utf8_lossy(&response_bytes));
+            eprintln!("ip: sending response {:?}", String::from_utf8_lossy(&response_bytes));
             Some(response_bytes.into_boxed_slice())
         }
         Err(e) => {
@@ -65,7 +66,7 @@ impl InternalProxy {
                     m.bidirectional_proxy = Some(crate::bidirectional_proxy::BidirectionalProxy::new(stream, bidi_fn));
                 }
                 Err(e) => {
-                    eprintln!("Failed to reconnect to {}: {}", ADDR, e);
+                    eprintln!("ip: Failed to reconnect to {}: {}", ADDR, e);
                 }
             }
         }
@@ -87,7 +88,7 @@ impl InternalProxy {
     pub fn buffer_notification(&self, notification: crate::jrpc::Notification) {
         let mut lock = self.m.lock().unwrap();
         lock.buffered_notifications.push(notification);
-        eprintln!("Added notification {:?} to buffer", lock.buffered_notifications.last());
+        eprintln!("ip: Added notification {:?} to buffer", lock.buffered_notifications.last());
         Self::send_buffered_if_possible(&mut lock);
     }
 

@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
@@ -6,7 +7,7 @@ use std::sync::{Arc, Mutex};
 A transport with an internal lock
 */
 
-pub trait Transport: Send + Sync + 'static {
+pub trait Transport: Send + Sync + 'static + Debug {
     fn write_block(&mut self, data: &[u8]) -> Result<(), Error>;
 
     fn flush(&mut self) -> Result<(), Error>;
@@ -38,16 +39,15 @@ impl ReadState {
 
     fn pop_msg(&mut self) -> Option<Box<[u8]>> {
         if self.buf.len() < 4 {
-            eprintln!("Not enough data to read size, current buffer length: {}", self.buf.len());
+            // eprintln!("Not enough data to read size, current buffer length: {}", self.buf.len());
             return None; // Not enough data to read size
         }
 
         let size_bytes = &self.buf[..4];
-        eprintln!("size_bytes : {:?}", size_bytes);
         let size = u32::from_le_bytes(size_bytes.try_into().unwrap()) as usize;
 
         if self.buf.len() < size + 4 {
-            eprintln!("Not enough data to read {}, current buffer length: {}", size, self.buf.len());
+            // eprintln!("Not enough data to read {}, current buffer length: {}", size, self.buf.len());
             return None; // Not enough data to read the full message
         }
 
@@ -83,49 +83,57 @@ impl<T: Transport> BidirectionalProxy<T> {
         std::thread::Builder::new()
             .name("exfiltrate::BidirectionalProxy".to_owned())
             .spawn(move || {
-                loop {
+                loop { //the entire flow
+                    //read phase.  First we read bytes from the transport and add them to the partial read buffer.
                     let mut buf = vec![0u8; 1024];
-                    let f = move_read.transport.lock().unwrap().read_nonblock(&mut buf);
-                    match f {
-                        Ok(size) if size > 0 => {
-                            eprintln!("Read {} bytes from transport", size);
-                            buf.truncate(size);
-
-                            let mut partial_read = move_read.partial_read.lock().unwrap();
-                            partial_read.add_bytes(&buf);
-                            drop(partial_read);
-
-                            'next_msg: while let Some(msg) = move_read.partial_read.lock().unwrap().pop_msg() {
-                                // Call the provided function with the message
-                                let buf = recv(msg);
-                                match buf {
-                                    Some(buf) => {
-                                        // If the function returns a response, send it back
-                                        let size = buf.len() as u32;
-                                        let mut transport = move_read.transport.lock().unwrap();
-                                        let size_bytes = size.to_le_bytes();
-                                        transport.write_block(&size_bytes).unwrap();
-                                        transport.write_block(&buf).unwrap();
-                                        transport.flush().unwrap();
-                                    }
-                                    None => {
-                                        // If the function returns None, do nothing
-                                        continue;
-                                    }
-                                }
+                    let mut transport = move_read.transport.lock().unwrap();
+                    let mut partial_read = move_read.partial_read.lock().unwrap();
+                    'read: loop {
+                        // eprintln!("bidirectional proxy read loop");
+                        match transport.read_nonblock(&mut buf) {
+                            Ok(size) if size > 0 => {
+                                eprintln!("bidi: Read {} bytes from transport {:?}", size, transport);
+                                partial_read.add_bytes(&buf[0..size]);
+                            }
+                            Ok(_) => {
+                                // eprintln!("No more data to read from transport, exiting read phase");
+                                break 'read; //move to pop phase
+                            }
+                            Err(e) => {
+                                eprintln!("Error reading from transport: {}", e);
+                                break 'read; // Exit the loop on error
                             }
                         }
-                        Ok(_) => {
-                            // No data read, continue to the next iteration
-                            std::thread::sleep(std::time::Duration::from_millis(10));
-                        }
-                        Err(e) => {
-                            eprintln!("Error reading from transport: {}", e);
-                            break; // Exit the loop on error
+                    }
+                    //pop phase
+                    'pop: while let Some(msg) = partial_read.pop_msg() {
+                        eprintln!("Pop message of size {}", msg.len());
+                        // Call the provided function with the message
+                        let buf = recv(msg);
+                        match buf {
+                            Some(buf) => {
+                                // If the function returns a response, send it back
+                                let size = buf.len() as u32;
+                                let size_bytes = size.to_le_bytes();
+                                eprintln!("bidi: Sending response {:?} to transport {:?}", String::from_utf8_lossy(&buf), transport);
+                                transport.write_block(&size_bytes).unwrap();
+                                transport.write_block(&buf).unwrap();
+                                transport.flush().unwrap();
+                            }
+                            None => {
+                                // If the function returns None, do nothing
+                                continue 'pop;
+                            }
                         }
                     }
+                    // eprintln!("bidirectional proxy exiting");
+                    //release our locks
+                    drop(transport);
+                    drop(partial_read);
+                    //before the next iteration, let's sleep a bit
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
-
+                //exit main loop
             }).unwrap();
 
         BidirectionalProxy { move_read: read }
@@ -134,8 +142,8 @@ impl<T: Transport> BidirectionalProxy<T> {
     pub fn send(&self, data: &[u8]) -> Result<(), Error> {
         //write size
         let size = data.len() as u32;
+        eprintln!("bidi: Sending message {:?} to transport {:?}", String::from_utf8_lossy(&data), self.move_read.transport);
         let size_bytes = size.to_le_bytes();
-        eprintln!("sending size_bytes : {:?}", size_bytes);
         let mut transport = self.move_read.transport.lock().unwrap();
         transport.write_block(&size_bytes).unwrap();
         transport.write_block(&data).unwrap();

@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use std::io::{Write,Read};
 use crate::jrpc::{Request, Response};
-use crate::tools::{ToolCallParams, ToolList};
+use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
 use crate::transit;
 use crate::transit::log_proxy::LogProxy;
 
@@ -117,7 +117,7 @@ impl TransitProxy {
 
                 //try parsing as a notification
                 let parse_notification: crate::jrpc::Notification = serde_json::from_slice(&data).expect("Failed to parse JSON-RPC notification");
-                eprintln!("Parsed notification: {:?}", parse_notification);
+                eprintln!("transit: Parsed notification: {:?}", parse_notification);
                 if parse_notification.method == "notifications/initialized" {
                     self.initial_setup();
                 }
@@ -145,11 +145,11 @@ impl TransitProxy {
                     "tools/call" => {
                         //try proxy_only tools first
                         let tool_call_params: ToolCallParams = serde_json::from_value(message.params.as_ref().unwrap().clone()).unwrap();
-                        let r= crate::transit::builtin_tools::call_proxy_only_tool(tool_call_params);
+                        let r= crate::transit::builtin_tools::call_proxy_only_tool(tool_call_params.clone());
                         match r {
                             Ok(response) => {
                                 let response = Response::new(response, message.id).erase();
-                                eprintln!("Sending response to proxy-only tool call: {:?}", response);
+                                eprintln!("transit: Sending response to proxy-only tool call: {:?}", response);
                                 accept.bidirectional.send(&serde_json::to_vec(&response).unwrap())?;
                                 return Ok(response);
                             }
@@ -157,17 +157,49 @@ impl TransitProxy {
                                 //fallthrough to remote call
                             }
                         }
+                        //check specific tools
+                        match tool_call_params.name.as_str() {
+                            "run_latest_tool" => {
+                                //here we need to get the inner tool params
+                                let tool_name = tool_call_params.arguments.get("tool_name").unwrap().as_str().unwrap().to_string();
+                                let tool_arguments = tool_call_params.arguments.get("params")
+                                    .and_then(|v| v.as_object())
+                                    .cloned()
+                                    .unwrap_or_default();
+                                //convert to hashmap
+                                let tool_arguments: HashMap<String, serde_json::Value> = tool_arguments.into_iter()
+                                    .map(|(k, v)| (k, v))
+                                    .collect();
+                                let inner_tool_call_params = ToolCallParams::new(tool_name, tool_arguments);
+
+
+                                let proxy_result = crate::transit::builtin_tools::call_proxy_only_tool(inner_tool_call_params);
+                                eprintln!("transit: proxy_result for run_latest_tool: {:?}", proxy_result);
+                                match proxy_result {
+                                    Ok(response) => {
+                                        let response = Response::new(response, message.id).erase();
+                                        return Ok(response);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("transit: Failed to call proxy-only tool: {}", e);
+                                        //fallthrough to remote call
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                     _ => {
                         //fallthrough to remote call
                     }
                 }
                 accept.bidirectional.send(&request)?;
-                eprintln!("Request sent to remote accept: {:?} {:?}", accept.addr, String::from_utf8_lossy(&request));
-                eprintln!("Waiting for response to request: {:?}", message);
+                eprintln!("transit: Request sent to remote accept: {:?} {:?}", accept.addr, String::from_utf8_lossy(&request));
+                drop(shared);
+                eprintln!("transit: Waiting for response to request: {:?}", message);
                 let mut msg = self.message_receiver.recv().unwrap();
                 assert!(msg.id == message.id, "Received response with mismatched ID: expected {:?}, got {:?}", message.id, msg.id);
-                eprintln!("transit_proxy Received response: {:?}", msg);
+                eprintln!("transit: Received response: {:?}", msg);
                 //some tools we merge local and remote behaviors
                 match message.method.as_str() {
                     "tools/list" => {
@@ -177,8 +209,33 @@ impl TransitProxy {
                         let mut target_tool_list: ToolList = serde_json::from_value(msg.result.unwrap()).unwrap();
                         target_tool_list.tools.append(&mut additional_tools.tools);
                         msg.result = Some(serde_json::to_value(target_tool_list).unwrap());
-                        eprintln!("transit_proxy injected proxy-only tools into response: {:?}", msg);
+                        eprintln!("transit injected proxy-only tools into response: {:?}", msg);
                     },
+                    "tools/call" => {
+                        let params = message.params.as_ref().unwrap();
+                        let tool_call_params: ToolCallParams = serde_json::from_value(params.clone()).unwrap();
+                        match tool_call_params.name.as_str() {
+                            "latest_tools" => {
+                                //we want to merge this with the builtin_only tools
+                                let mut additional_tools = crate::transit::builtin_tools::proxy_only_tools();
+                                //parse tool list
+                                eprintln!("msg result before: {:?}", msg.result);
+                                let mut target_response: ToolCallResponse = serde_json::from_value(msg.result.unwrap()).unwrap();
+                                assert_eq!(target_response.content.len(), 1, "Expected exactly one tool in response, got: {:?}", target_response.content);
+                                let tool_info = target_response.content.remove(0);
+
+                                let mut target_tool_list: ToolList = serde_json::from_str(tool_info.as_str().unwrap()).unwrap();
+                                target_tool_list.tools.append(&mut additional_tools.tools);
+                                let as_json = serde_json::to_string(&target_tool_list).unwrap();
+                                let tool_call_response = ToolCallResponse::new(vec![as_json.into()]);
+                                msg.result = Some(serde_json::to_value(tool_call_response).unwrap());
+                                eprintln!("transit injected proxy-only tools into response: {:?}", msg);
+                            }
+                            _ => {
+                                //we don't do anything special for other tools
+                            }
+                        }
+                    }
                     _ => {}
                 }
 
@@ -193,7 +250,7 @@ impl TransitProxy {
     }
 
     fn local_fallback(message: crate::jrpc::Request) -> Result<crate::jrpc::Response<serde_json::Value>, Error> {
-        eprintln!("Local fallback for request: {:?}", &message);
+        eprintln!("transit: local fallback for request: {:?}", &message);
         match message.method.as_str() {
             "tools/list" => {
                 let result = crate::transit::builtin_tools::proxy_tools();
@@ -208,7 +265,7 @@ impl TransitProxy {
                 }
             }
             _ => {
-                eprintln!("No connection available, cannot send request: {:?}", message);
+                eprintln!("transit: No connection available, cannot send request: {:?}", message);
                 return Err(Error::NotConnected);
             }
         }

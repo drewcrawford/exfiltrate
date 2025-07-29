@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{LazyLock, Mutex, RwLock};
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::{MapAccess, Visitor};
 use crate::internal_proxy::InternalProxy;
 use crate::jrpc::{Request, Error, Response, Notification};
 
@@ -154,7 +156,7 @@ pub fn add_tool(tool: Box<dyn Tool>) {
 
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize,Clone)]
 pub(crate) struct ToolCallParams {
     pub(crate) name: String,
     pub(crate) arguments: HashMap<String, serde_json::Value>,
@@ -168,9 +170,9 @@ impl ToolCallParams {
     }
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize,serde::Deserialize)]
 pub struct ToolCallResponse {
-    content: Vec<ToolContent>,
+    pub(crate) content: Vec<ToolContent>,
     is_error: bool,
 }
 
@@ -212,7 +214,13 @@ impl ToolCallError {
 pub enum ToolContent {
     Text(String),
 }
-
+impl ToolContent {
+    pub(crate) fn as_str(&self) -> Option<&str> {
+        match self {
+            ToolContent::Text(text) => Some(text),
+        }
+    }
+}
 impl Serialize for ToolContent {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -228,6 +236,65 @@ impl Serialize for ToolContent {
                 s.end()
             }
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolContent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de;
+        enum Field { Type, Text, Unknown }
+
+        struct ToolContentVisitor;
+
+        impl<'de> Visitor<'de> for ToolContentVisitor {
+            type Value = ToolContent;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a tool content object with type and data")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut content_type: Option<String> = None;
+                let mut text: Option<String> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "type" => {
+                            if content_type.is_some() {
+                                return Err(de::Error::duplicate_field("type"));
+                            }
+                            content_type = Some(map.next_value()?);
+                        }
+                        "text" => {
+                            if text.is_some() {
+                                return Err(de::Error::duplicate_field("text"));
+                            }
+                            text = Some(map.next_value()?);
+                        }
+                        _ => {
+                            let _: de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+
+                match content_type.as_deref() {
+                    Some("text") => {
+                        let text = text.ok_or_else(|| de::Error::missing_field("text"))?;
+                        Ok(ToolContent::Text(text))
+                    }
+                    Some(other) => Err(de::Error::unknown_variant(other, &["text"])),
+                    None => Err(de::Error::missing_field("type")),
+                }
+            }
+        }
+
+        deserializer.deserialize_map(ToolContentVisitor)
     }
 }
 
