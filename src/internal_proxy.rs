@@ -1,9 +1,7 @@
 use std::net::TcpStream;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex};
 use crate::internal_proxy::Error::NotConnected;
-use std::io::Write;
 use crate::bidirectional_proxy::BidirectionalProxy;
-use crate::jrpc::Request;
 
 #[derive(Debug)]
 pub enum Error {

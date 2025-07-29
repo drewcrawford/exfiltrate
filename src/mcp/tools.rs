@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{LazyLock, Mutex, RwLock};
+use std::sync::{LazyLock, RwLock};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{MapAccess, Visitor};
 use crate::internal_proxy::InternalProxy;

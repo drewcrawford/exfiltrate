@@ -1,5 +1,4 @@
 use crate::jrpc::{Request, Response};
-use std::collections::HashMap;
 pub mod tools;
 pub(crate) mod latest_tools;
 

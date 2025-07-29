@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::collections::HashMap;
 use serde_json::Value;
 use crate::tools::{InputSchema, Tool, ToolCallError, ToolCallParams, ToolCallResponse};

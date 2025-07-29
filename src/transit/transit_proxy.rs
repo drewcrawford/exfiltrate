@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::io::{Write,Read};
 use crate::jrpc::{Request, Response};
 use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
-use crate::transit;
 use crate::transit::log_proxy::LogProxy;
 
 pub struct Accept {
