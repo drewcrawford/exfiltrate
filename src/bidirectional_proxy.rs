@@ -80,7 +80,7 @@ impl<T: Transport> BidirectionalProxy<T> {
         let read = Arc::new(read);
         let move_read = read.clone();
 
-        std::thread::Builder::new()
+        crate::sys::thread::Builder::new()
             .name("exfiltrate::BidirectionalProxy".to_owned())
             .spawn(move || {
                 loop { //the entire flow
@@ -131,10 +131,11 @@ impl<T: Transport> BidirectionalProxy<T> {
                     drop(transport);
                     drop(partial_read);
                     //before the next iteration, let's sleep a bit
-                    std::thread::sleep(crate::sys::time::Duration::from_millis(100));
+                    crate::sys::thread::sleep(crate::sys::time::Duration::from_millis(100));
                 }
                 //exit main loop
             }).unwrap();
+
 
         BidirectionalProxy { move_read: read }
     }

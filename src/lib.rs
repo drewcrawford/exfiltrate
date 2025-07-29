@@ -9,5 +9,6 @@ mod bidirectional_proxy;
 #[cfg(feature="logwise")]
 pub mod logwise;
 mod sys;
+mod spinlock;
 
 pub use mcp::tools;
