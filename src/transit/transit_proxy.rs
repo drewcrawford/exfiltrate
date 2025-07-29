@@ -144,7 +144,7 @@ impl TransitProxy {
                 match message.method.as_str() {
                     "tools/call" => {
                         //try proxy_only tools first
-                        let tool_call_params: ToolCallParams = serde_json::from_value(message.params.unwrap()).unwrap();
+                        let tool_call_params: ToolCallParams = serde_json::from_value(message.params.as_ref().unwrap().clone()).unwrap();
                         let r= crate::transit::builtin_tools::call_proxy_only_tool(tool_call_params);
                         match r {
                             Ok(response) => {
@@ -167,16 +167,17 @@ impl TransitProxy {
                 eprintln!("Waiting for response to request: {:?}", message);
                 let mut msg = self.message_receiver.recv().unwrap();
                 assert!(msg.id == message.id, "Received response with mismatched ID: expected {:?}, got {:?}", message.id, msg.id);
-                eprintln!("Received response: {:?}", msg);
+                eprintln!("transit_proxy Received response: {:?}", msg);
                 //some tools we merge local and remote behaviors
                 match message.method.as_str() {
                     "tools/list" => {
                         //we want to merge this with the builtin_only tools
                         let mut additional_tools = crate::transit::builtin_tools::proxy_only_tools();
                         //parse tool list
-                        let mut target_tool_list: ToolList = serde_json::from_value(message.params.unwrap()).unwrap();
+                        let mut target_tool_list: ToolList = serde_json::from_value(msg.result.unwrap()).unwrap();
                         target_tool_list.tools.append(&mut additional_tools.tools);
                         msg.result = Some(serde_json::to_value(target_tool_list).unwrap());
+                        eprintln!("transit_proxy injected proxy-only tools into response: {:?}", msg);
                     },
                     _ => {}
                 }

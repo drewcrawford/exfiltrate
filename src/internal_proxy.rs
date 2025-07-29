@@ -25,28 +25,28 @@ pub struct InternalProxy {
     m: Mutex<Mut>,
 }
 
+fn bidi_fn(msg: Box<[u8]>) -> Option<Box<[u8]>> {
+    //attempt parse as request
+    let request: Result<crate::jrpc::Request, _> = serde_json::from_slice(&msg);
+    match request {
+        Ok(request) => {
+            eprintln!("Received request from internal proxy: {:?}", request);
+            let response = crate::mcp::dispatch_in_target(request);
+            let response_bytes = serde_json::to_vec(&response).unwrap();
+            eprintln!("Sending response from internal proxy {:?}", String::from_utf8_lossy(&response_bytes));
+            Some(response_bytes.into_boxed_slice())
+        }
+        Err(e) => {
+            todo!("Not implemented yet: Received request from internal proxy: {:?}", e);
+        }
+    }
+}
+
 const ADDR: &str = "127.0.0.1:1985";
 impl InternalProxy {
     fn new() -> Self {
         let connect = std::net::TcpStream::connect(ADDR);
-        let bidirectional = connect.ok().map(|stream| crate::bidirectional_proxy::BidirectionalProxy::new(stream, |msg| {
-            //attempt parse as request
-            let request: Result<crate::jrpc::Request, _> = serde_json::from_slice(&msg);
-            match request {
-                Ok(request) => {
-                    eprintln!("Received request from internal proxy: {:?}", request);
-                    let response = crate::mcp::dispatch_in_target(request);
-                    let response_bytes = serde_json::to_vec(&response).unwrap();
-                    eprintln!("Sending response from internal proxy {:?}", String::from_utf8_lossy(&response_bytes));
-                    Some(response_bytes.into_boxed_slice())
-                }
-                Err(e) => {
-                    todo!("Not implemented yet: Received request from internal proxy: {:?}", e);
-                }
-            }
-        }));
-
-
+        let bidirectional = connect.ok().map(|stream| crate::bidirectional_proxy::BidirectionalProxy::new(stream, bidi_fn));
         let m = Mut {
             bidirectional_proxy: bidirectional,
             buffered_notifications: Vec::new(),
@@ -62,9 +62,7 @@ impl InternalProxy {
             let s = TcpStream::connect(ADDR);
             match s {
                 Ok(stream) => {
-                    m.bidirectional_proxy = Some(crate::bidirectional_proxy::BidirectionalProxy::new(stream, |msg| {
-                        todo!();
-                    }));
+                    m.bidirectional_proxy = Some(crate::bidirectional_proxy::BidirectionalProxy::new(stream, bidi_fn));
                 }
                 Err(e) => {
                     eprintln!("Failed to reconnect to {}: {}", ADDR, e);
@@ -89,7 +87,7 @@ impl InternalProxy {
     pub fn buffer_notification(&self, notification: crate::jrpc::Notification) {
         let mut lock = self.m.lock().unwrap();
         lock.buffered_notifications.push(notification);
-        eprintln!("Buffered {} notifications", lock.buffered_notifications.len());
+        eprintln!("Added notification {:?} to buffer", lock.buffered_notifications.last());
         Self::send_buffered_if_possible(&mut lock);
     }
 

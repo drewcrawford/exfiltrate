@@ -11,7 +11,6 @@ pub trait Tool: Send + Sync {
 
     fn call(&self, params: HashMap<String, serde_json::Value>) -> Result<ToolCallResponse, ToolCallError>;
 
-    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 
@@ -25,6 +24,13 @@ pub static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
     RwLock::new(vec![
 
     ])
+});
+
+pub static SHARED_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
+    vec![
+        Box::new(crate::mcp::latest_tools::LatestTools),
+        Box::new(crate::mcp::latest_tools::RunLatestTool),
+    ]
 });
 
 #[derive(Debug, serde::Serialize,serde::Deserialize)]
@@ -113,7 +119,7 @@ impl ToolInfo {
 }
 
 pub(crate) fn list_int() -> ToolList {
-    let tool_infos: Vec<ToolInfo> = TOOLS.read().unwrap().iter().map(|tool| ToolInfo::from_tool(tool.as_ref())).collect();
+    let tool_infos: Vec<ToolInfo> = TOOLS.read().unwrap().iter().chain(SHARED_TOOLS.iter()).map(|tool| ToolInfo::from_tool(tool.as_ref())).collect();
     let tool_list = ToolList {
         tools: tool_infos,
     };
@@ -239,7 +245,7 @@ impl From<&str> for ToolContent {
 
 pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse, crate::jrpc::Error>  {
     let tools = TOOLS.read().unwrap();
-    let tool = tools.iter()
+    let tool = tools.iter().chain(SHARED_TOOLS.iter())
         .find(|t| t.name() == params.name)
         .map(|t| t.as_ref());
     match tool {

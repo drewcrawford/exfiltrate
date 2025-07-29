@@ -29,9 +29,6 @@ impl Tool for LatestTools {
         crate::mcp::tools::InputSchema::new(vec![])
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
 }
 
 
@@ -78,8 +75,5 @@ impl Tool for RunLatestTool {
         r.map_err(|e| ToolCallError::new(vec![format!("Error calling tool: {:?}", e).into()]))
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
 }
 

@@ -23,6 +23,7 @@ impl Server {
                         eprintln!("Failed to read from stdin, exiting...");
                         break;
                     }
+                    eprintln!("Received data from stdin: {}", buffer);
                     let buffer = buffer.trim().as_bytes();
                     match proxy.received_data(buffer) {
                         Some(response) => {

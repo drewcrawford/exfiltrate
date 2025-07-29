@@ -2,19 +2,13 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use crate::tools::{Tool, ToolCallParams, ToolCallResponse, ToolInfo, ToolList};
 
-//These tools are always available and can be hosted in the proxy application or target application.
-//We prefer the one in the target application, but if it is not available, we use the one in the proxy application.
-static SHARED_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
-    vec![
-        Box::new(crate::mcp::latest_tools::LatestTools),
-        Box::new(crate::mcp::latest_tools::RunLatestTool),
-    ]
-});
 
 //These tools are only available in the proxy application.  They are NOT available in the target application;
 //the proxy's version is always used.
 static PROXY_ONLY_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
     vec![
+        #[cfg(feature="logwise")]
+        Box::new(crate::transit::log_proxy::LogwiseRead),
 
     ]
 });
@@ -25,7 +19,7 @@ Returns a list of tools that are available in the proxy application.
 This includes both the tools that are proxy-only and tools that are shared.
 */
 pub fn proxy_tools() -> ToolList {
-    let mut tools = SHARED_TOOLS.iter()
+    let mut tools = crate::tools::SHARED_TOOLS.iter()
         .chain(PROXY_ONLY_TOOLS.iter())
         .map(|tool| ToolInfo::from_tool(tool.as_ref()))
         .collect::<Vec<_>>();
@@ -60,7 +54,7 @@ pub fn call_proxy_tool(params: ToolCallParams) -> Result<ToolCallResponse, crate
             Err(e) => Ok(e.into_response())
         }
     }
-    else if let Some(tool) = SHARED_TOOLS.iter().find(|tool| tool.name() == params.name) {
+    else if let Some(tool) = crate::tools::SHARED_TOOLS.iter().find(|tool| tool.name() == params.name) {
         match tool.call(hashmap) {
             Ok(response) => Ok(response),
             Err(e) => Ok(e.into_response())
