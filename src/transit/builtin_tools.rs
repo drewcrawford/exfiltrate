@@ -9,7 +9,8 @@ static PROXY_ONLY_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
     vec![
         #[cfg(feature="logwise")]
         Box::new(crate::transit::log_proxy::LogwiseRead),
-
+        #[cfg(feature="logwise")]
+        Box::new(crate::transit::log_proxy::LogwiseGrep),
     ]
 });
 

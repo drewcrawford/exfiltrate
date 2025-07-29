@@ -8,6 +8,12 @@ serde = { version = "1.0", features= ["derive"] }
 serde_json = "1.0"
 thiserror = "2"
 logwise = { version = "0.2", optional = true }
+regex = {version = "1.11", optional=true}
+log = "0.4.27"
+
+[features]
+transit = ["dep:regex"] # primarily used for logwise parsing
+logwise = ["dep:logwise"]
 
 [dev-dependencies]
 logwise = "0.2"
@@ -32,9 +38,7 @@ name = "log_exfiltration"
 path = "examples/log_exfiltration.rs"
 required-features = ["transit","logwise"]
 
-[features]
-transit = []
-logwise = ["dep:logwise"]
+
 
 [patch.crates-io]
 logwise = { path = "../logwise" }
