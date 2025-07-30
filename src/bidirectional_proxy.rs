@@ -15,6 +15,9 @@ pub trait Transport: Send + Sync + 'static + Debug {
     fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, Error>;
 }
 
+
+
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("IO error: {0}")]

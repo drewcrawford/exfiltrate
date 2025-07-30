@@ -3,7 +3,8 @@ use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use base64::Engine;
-use crate::transit::transit_proxy::TransitProxy;
+use crate::bidirectional_proxy::{BidirectionalProxy, Error, Transport};
+use crate::transit::transit_proxy::{Accept, TransitProxy};
 
 
 #[derive(PartialEq)]
@@ -174,6 +175,49 @@ impl HTTPParser {
     }
 }
 
+#[derive(Debug)]
+pub enum WebSocketOrStream {
+    WebSocket,
+    Stream(TcpStream),
+}
+impl Transport for WebSocketOrStream {
+    fn write_block(&mut self, data: &[u8]) -> Result<(), Error> {
+        match self {
+            WebSocketOrStream::Stream(stream) => {
+                stream.write_block(data)?;
+                Ok(())
+            }
+            WebSocketOrStream::WebSocket => {
+                todo!();
+            }
+        }
+    }
+
+    fn flush(&mut self) -> Result<(), Error> {
+        match self {
+            WebSocketOrStream::Stream(stream) => {
+                Transport::flush(stream)?;
+                Ok(())
+            }
+            WebSocketOrStream::WebSocket => {
+                todo!();
+            }
+        }
+    }
+
+    fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        match self {
+            WebSocketOrStream::Stream(stream) => {
+                let bytes_read = stream.read_nonblock(buf)?;
+                Ok(bytes_read)
+            }
+            WebSocketOrStream::WebSocket => {
+                todo!();
+            }
+        }
+    }
+}
+
 
 pub struct Server {
 }
@@ -198,7 +242,7 @@ impl MessageQueue {
             eprintln!("Sent message to {:?}: {}", self.stream.peer_addr(),format!("data: {}", line));
         }
         self.stream.write("\r\n\r\n".as_bytes())?; // End of message
-        self.stream.flush()?;
+        std::io::Write::flush(&mut self.stream)?;
         Ok(())
     }
 }
@@ -237,7 +281,7 @@ impl Session {
                     //begin response
                     let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n";
                     self.stream.as_mut().unwrap().write(response).expect("Failed to write to stream");
-                    self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
+                    std::io::Write::flush(self.stream.as_mut().unwrap()).expect("Failed to flush stream");
                     //set up the message queue
                     let message_queue = MessageQueue::new(self.stream.take().unwrap());
                     self.active_session.lock().unwrap().replace(message_queue);
@@ -246,7 +290,7 @@ impl Session {
                 HTTPParseResult::NotFound => {
                     let response = b"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found";
                     self.stream.as_mut().unwrap().write_all(response).expect("Failed to write 404 response");
-                    self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
+                    std::io::Write::flush(self.stream.as_mut().unwrap()).expect("Failed to flush stream");
                     eprintln!("Sent 404 Not Found response");
                     //continue to next request
                 }
@@ -260,7 +304,7 @@ impl Session {
                 HTTPParseResult::Rejected(reason) => {
                     let response = format!("HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", reason.len(), reason);
                     self.stream.as_mut().unwrap().write_all(response.as_bytes()).expect("Failed to write 400 response");
-                    self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
+                    std::io::Write::flush(self.stream.as_mut().unwrap()).expect("Failed to flush stream");
                     eprintln!("Sent 400 Bad Request response: {}", reason);
                     //continue to next request
                 }
@@ -282,8 +326,17 @@ impl Session {
                         accept = accept
                     );
                     self.stream.as_mut().unwrap().write_all(response.as_bytes()).unwrap();
-                    self.stream.as_mut().unwrap().flush().unwrap();
+                    std::io::Write::flush(self.stream.as_mut().unwrap()).expect("Failed to flush stream");
                     eprintln!("Sent 101 Switching Protocols upgrade");
+                    //take stream
+                    let stream = self.stream.take().unwrap();
+                    //convert to bidi
+                    let proxy = BidirectionalProxy::new(WebSocketOrStream::WebSocket, |read| {
+                        todo!();
+                    });
+                    let addr = format!("{}", stream.peer_addr().unwrap());
+                    self.proxy.lock().unwrap().change_accept(Some(Accept::new(proxy, addr)));
+                    return; //promoted to transit proxy
                 }
             }
         }
@@ -300,13 +353,13 @@ impl Session {
                 stream.write(as_bytes.len().to_string().as_bytes()).unwrap();
                 stream.write(b"\r\n\r\n").unwrap();
                 stream.write(&as_bytes).unwrap();
-                stream.flush().unwrap();
+                std::io::Write::flush(stream).expect("Failed to flush stream");
                 eprintln!("Sent response: {:?}", String::from_utf8_lossy(&as_bytes));
             }
             None => {
                 let stream = self.stream.as_mut().unwrap();
                 stream.write("HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n".as_bytes()).unwrap();
-                stream.flush().unwrap();
+                std::io::Write::flush(stream).expect("Failed to flush stream");
             }
         }
 

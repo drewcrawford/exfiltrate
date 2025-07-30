@@ -4,11 +4,21 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use crate::jrpc::{Request, Response};
 use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
+use crate::transit::http::WebSocketOrStream;
 use crate::transit::log_proxy::LogProxy;
 
 pub struct Accept {
-    bidirectional: crate::bidirectional_proxy::BidirectionalProxy<TcpStream>,
-    addr: std::net::SocketAddr,
+    bidirectional: crate::bidirectional_proxy::BidirectionalProxy<crate::transit::http::WebSocketOrStream>,
+    addr: String,
+}
+
+impl Accept {
+    pub fn new(bidirectional: crate::bidirectional_proxy::BidirectionalProxy<crate::transit::http::WebSocketOrStream>, addr: String) -> Self {
+        Accept {
+            bidirectional,
+            addr,
+        }
+    }
 }
 
 
@@ -48,7 +58,7 @@ impl TransitProxy {
             .spawn( move || {
                 let stream = listener.accept().unwrap();
                 eprintln!("transit_proxy accepted internal_proxy from {}", stream.0.peer_addr().unwrap());
-                let bidirectional_proxy = crate::bidirectional_proxy::BidirectionalProxy::new(stream.0, move |msg| {
+                let bidirectional_proxy = crate::bidirectional_proxy::BidirectionalProxy::new(WebSocketOrStream::Stream(stream.0), move |msg| {
                     eprintln!("transit_proxy received message: {:?}", String::from_utf8_lossy(&msg));
                     //try parsing as a response
                     let response: Result<crate::jrpc::Response<serde_json::Value>, _> = serde_json::from_slice(&msg);
@@ -74,7 +84,8 @@ impl TransitProxy {
                     }
 
                 });
-                per_thread_shared_accept.lock().unwrap().latest_accept = Some(Accept { bidirectional: bidirectional_proxy, addr: stream.1});
+                let peer_string = format!("{}", stream.1);
+                per_thread_shared_accept.lock().unwrap().latest_accept = Some(Accept { bidirectional: bidirectional_proxy, addr:peer_string });
 
             }).unwrap();
         TransitProxy {
@@ -89,6 +100,10 @@ impl TransitProxy {
     {
         let mut shared = self.shared_accept.lock().unwrap();
         shared.process_notifications = Box::new(process_notifications);
+    }
+
+    pub(crate) fn change_accept(&self, new_accept: Option<Accept>) {
+        self.shared_accept.lock().unwrap().latest_accept =  new_accept;
     }
 }
 
