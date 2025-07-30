@@ -12,6 +12,7 @@ struct ForwardingLogger {
 impl Logger for ForwardingLogger {
     fn finish_log_record(&self, record: LogRecord) {
         let record = record.to_string();
+        eprintln!("Logwise record: {}", record);
         let n = Notification::new("exfiltrate/logwise/record".to_string(), Some(record.into()));
         InternalProxy::current().buffer_notification(n);
     }

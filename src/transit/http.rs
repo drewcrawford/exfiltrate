@@ -29,6 +29,7 @@ enum HTTPParseResult {
 
 struct WebsocketInfo {
     key: String,
+    leftover_bytes: Vec<u8>,
 }
 
 impl HTTPParser {
@@ -162,7 +163,7 @@ impl HTTPParser {
             HTTPParseResult::Post(body)
         } else if method == b"GET" && headers.get("upgrade").map(|s| s.as_str()) == Some("websocket") {
             let key = headers.get("sec-websocket-key").map(|s| s.as_str()).unwrap_or("").to_owned();
-            HTTPParseResult::Websocket(WebsocketInfo {key})
+            HTTPParseResult::Websocket(WebsocketInfo {key, leftover_bytes: self.buf[pos..].to_vec() })
         }
         else {
             let f = format!("request {}", String::from_utf8_lossy(&self.buf));
@@ -183,10 +184,10 @@ struct WebsocketStream {
 }
 
 impl WebsocketStream {
-    fn new(tcp: TcpStream) -> Self {
+    fn new(tcp: TcpStream,in_buf: Vec<u8>) -> Self {
         WebsocketStream {
             tcp,
-            in_buf: Vec::new(),
+            in_buf,
             out_buf: Vec::new(),
         }
     }
@@ -237,45 +238,57 @@ impl Transport for WebSocketOrStream {
                     //just return the data from the output buffer
                     let bytes_to_copy = stream.out_buf.len().min(buf.len());
                     buf[..bytes_to_copy].copy_from_slice(&stream.out_buf[..bytes_to_copy]);
-                    stream.out_buf.clear();
+                    //remove the bytes from the output buffer
+                    stream.out_buf.drain(..bytes_to_copy);
                     return Ok(bytes_to_copy);
+                }
+                else {
+                    match try_parse_frame(stream, buf) {
+                        Ok(0) => {
+                            //not enough data to parse a frame, read more
+                        }
+                        Ok(bytes_read) => {
+                            return Ok(bytes_read); //we successfully parsed a frame
+                        }
+                        Err(e) => return Err(e), //error parsing frame
+                    }
                 }
                 //otherwise do a read
                 let mut private_buf = vec![0; 1024]; //temporary buffer
-                //read until we see 0
-                loop {
-                    let bytes_read = stream.tcp.read_nonblock(&mut private_buf)?;
-                    if bytes_read == 0 { break }
-                    stream.in_buf.extend_from_slice(&private_buf[..bytes_read]);
-                }
-                //try to parse a frame
-                match WebsocketFrame::from_bytes(&stream.in_buf) {
-                    Ok((mut frame, size)) => {
-                        eprintln!("WebSocket Frame Parsed with size {}",size);
-                        //copy the data to the output buffer
-                        let bytes_to_copy = frame.data.len().min(buf.len());
-                        buf[..bytes_to_copy].copy_from_slice(&frame.data[..bytes_to_copy]);
-                        //remove the bytes from the input buffer
-                        stream.in_buf.drain(..size);
-                        //place additional bytes in the output buffer
-                        if frame.data.len() > bytes_to_copy {
-                            stream.out_buf.extend_from_slice(&frame.data[bytes_to_copy..]);
-                        }
-                        Ok(bytes_to_copy)
-                    }
-                    Err(WebsocketFrameError::FrameTooShort) => {
-                        Ok(0) //not enough data to parse a frame
-                    }
-                    Err(WebsocketFrameError::Rejected(reason)) => {
-                        eprintln!("WebSocket Frame Rejected: {}", reason);
-                        stream.in_buf.drain(..);
-                        Err(Error::IoError(std::io::Error::new(std::io::ErrorKind::InvalidData, reason)))
-                    }
 
-                }
-
+                let bytes_read = stream.tcp.read_nonblock(&mut private_buf)?;
+                stream.in_buf.extend_from_slice(&private_buf[..bytes_read]);
+                try_parse_frame(stream, buf) //try to parse a frame
             }
         }
+    }
+}
+
+fn try_parse_frame(stream: &mut WebsocketStream, buf: &mut [u8]) -> Result<usize, Error> {
+    //try to parse a frame
+    match WebsocketFrame::from_bytes(&stream.in_buf) {
+        Ok((mut frame, size)) => {
+            eprintln!("WebSocket Frame Parsed with size {}",size);
+            //copy the data to the output buffer
+            let bytes_to_copy = frame.data.len().min(buf.len());
+            buf[..bytes_to_copy].copy_from_slice(&frame.data[..bytes_to_copy]);
+            //remove the bytes from the input buffer
+            stream.in_buf.drain(..size);
+            //place additional bytes in the output buffer
+            if frame.data.len() > bytes_to_copy {
+                stream.out_buf.extend_from_slice(&frame.data[bytes_to_copy..]);
+            }
+            Ok(bytes_to_copy)
+        }
+        Err(WebsocketFrameError::FrameTooShort) => {
+            Ok(0) //not enough data to parse a frame
+        }
+        Err(WebsocketFrameError::Rejected(reason)) => {
+            eprintln!("WebSocket Frame Rejected: {}", reason);
+            stream.in_buf.drain(..);
+            Err(Error::IoError(std::io::Error::new(std::io::ErrorKind::InvalidData, reason)))
+        }
+
     }
 }
 
@@ -393,7 +406,7 @@ impl Session {
                     let stream = self.stream.take().unwrap();
                     let addr = format!("{}", stream.peer_addr().unwrap());
 
-                    self.proxy.lock().unwrap().change_accept(Some(WebSocketOrStream::WebSocket(WebsocketStream::new(stream))));
+                    self.proxy.lock().unwrap().change_accept(Some(WebSocketOrStream::WebSocket(WebsocketStream::new(stream, info.leftover_bytes))));
                     return; //promoted to transit proxy
                 }
             }
@@ -500,7 +513,7 @@ impl WebsocketFrame {
         const BINARY : u8 = 0b1000_0010; //binary frame, FIN
         frame.push(BINARY); // us
         //second byte is the payload length
-        const MASK_ON : u8 = 0b1000000;
+        const MASK_ON : u8 = 0b10000000;
         const MASK_OFF : u8 = 0b0000000;
         let mask_current = if self.mask { MASK_ON } else { MASK_OFF };
         if self.data.len() <= 125 {
@@ -576,6 +589,7 @@ impl WebsocketFrame {
                 data[i] ^= masking_key[i % 4];
             }
         }
+        eprintln!("data: {:?} length: {:?}", &data, data.len());
         let frame = WebsocketFrame { data, mask };
         Ok((frame, data_begin + len))
     }

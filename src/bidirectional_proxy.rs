@@ -48,6 +48,8 @@ impl ReadState {
 
         let size_bytes = &self.buf[..4];
         let size = u32::from_le_bytes(size_bytes.try_into().unwrap()) as usize;
+        eprintln!("Size_bytes: {:?}, size: {:?}", size_bytes, size);
+
         if size > 10_000 {
             panic!("Probably the wrong size.");
         }
@@ -56,6 +58,7 @@ impl ReadState {
             // eprintln!("Not enough data to read {}, current buffer length: {}", size, self.buf.len());
             return None; // Not enough data to read the full message
         }
+
 
         let msg = self.buf[4..size + 4].to_vec().into_boxed_slice();
         self.buf.drain(..size + 4); // Remove the processed message from the buffer
@@ -98,7 +101,7 @@ impl<T: Transport> BidirectionalProxy<T> {
                         // eprintln!("bidirectional proxy read loop");
                         match transport.read_nonblock(&mut buf) {
                             Ok(size) if size > 0 => {
-                                eprintln!("bidi: Read {} bytes from transport {:?}", size, transport);
+                                eprintln!("bidi: Read {} bytes from transport", size);
                                 partial_read.add_bytes(&buf[0..size]);
                             }
                             Ok(_) => {
