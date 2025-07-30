@@ -10,7 +10,7 @@ use wasm_bindgen::closure::Closure;
 
 #[derive(Debug)]
 pub struct WebsocketAdapter {
-
+    read_recv:  Mutex<std::sync::mpsc::Receiver<Vec<u8>>>,
 }
 
 #[derive(Debug)]
@@ -52,7 +52,7 @@ impl<T> Clone for OneShot<T> {
     }
 }
 
-const ADDR: &str = "ws://localhost:1985";
+const ADDR: &str = "ws://localhost:1984";
 
 impl WebsocketAdapter {
     //this function must absolutely be async.
@@ -60,6 +60,7 @@ impl WebsocketAdapter {
     pub async fn new() -> Result<Self, Error> {
         //put ws communication on its own thread
         let (c,f) = r#continue::continuation();
+        let (read_send,read_recv) = std::sync::mpsc::channel();
 
         crate::sys::thread::Builder::new()
             .name("exfiltrate::WebsocketAdapter".to_owned())
@@ -80,21 +81,51 @@ impl WebsocketAdapter {
 
                         let move_c = c.clone();
                         let onerror_callback = Closure::wrap(Box::new(move |event: web_sys::ErrorEvent| {
-                            web_sys::console::log_1(&"WebSocket error!".into());
+                            let error_msg = format!("Websocket error: {}", event.message());
+                            web_sys::console::log_1(&error_msg.into());
                             move_c.send_if_needed(Err(Error::CantConnect(event.message())));
                         }) as Box<dyn FnMut(_)>);
                         ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
                         onerror_callback.forget(); //leak the closure
+
+                        let onclose_callback = Closure::wrap(Box::new(move |event: web_sys::CloseEvent| {
+                            web_sys::console::log_1(&"WebSocket closed!".into());
+                        }) as Box<dyn FnMut(_)>);
+                        ws.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
+                        onclose_callback.forget(); //leak the closure
+                        std::mem::forget(read_send); //todo
+                        let onmessage_callback = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
+                            web_sys::console::log_1(&"WebSocket received message: ".into());
+                            todo!();
+                            return;
+                        }) as Box<dyn FnMut(_)>);
+                        ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
+                        onmessage_callback.forget(); //leak the closure
+
+
                     }
                     Err(e) => {
                         c.send_if_needed(Err(Error::CantConnect(e.as_string().unwrap_or_else(|| "Unknown error".to_string()))));
                     }
                 }
+                //forbid thread exit
+                let global = web_sys::js_sys::global();
+                let wrapper = Closure::wrap(Box::new(move || {
+                    web_sys::console::log_1(&"thread close called".into());
+                }) as Box<dyn Fn()>);
+
+                web_sys::js_sys::Reflect::set(&global, &"close".into(), wrapper.as_ref().unchecked_ref())
+                    .expect("failed to patch close");
+                wrapper.forget();
+
             }).unwrap();
+
         match f.await {
             Ok(_) => {
                 logwise::info_sync!("WebsocketAdapter created successfully");
-                Ok(WebsocketAdapter {})
+                Ok(WebsocketAdapter {
+                    read_recv: Mutex::new(read_recv),
+                })
             }
             Err(e) => {
                 logwise::error_sync!("Failed to create WebsocketAdapter: {e}", e=logwise::privacy::LogIt(&e));
@@ -116,7 +147,17 @@ impl Transport for WebsocketAdapter {
     }
 
     fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, crate::bidirectional_proxy::Error> {
-        logwise::error_sync!("WebsocketAdapter::read_nonblock is not implemented yet");
-        todo!("Implement WebsocketAdapter::read_nonblock");
+        match self.read_recv.lock().unwrap().try_recv() {
+            Ok(data) => {
+                if data.len() > buf.len() {
+                    logwise::error_sync!("WebsocketAdapter::read_nonblock: buffer too small");
+                    todo!()
+                } else {
+                    buf[..data.len()].copy_from_slice(&data);
+                    Ok(data.len())
+                }
+            }
+            Err(_) => Ok(0)
+        }
     }
 }

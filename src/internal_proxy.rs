@@ -103,6 +103,10 @@ impl InternalProxy {
         #[cfg(target_arch = "wasm32")]
         if _wasm_connecting {
             let move_proxy = self.bidirectional_proxy.clone();
+            if web_sys::window().is_none() {
+                web_sys::console::error_1(&"WebsocketAdapter: No window available".into());
+                todo!("Needs thread persist trick?");
+            }
             wasm_bindgen_futures::spawn_local(async move {
                 let stream = websocket_adapter::WebsocketAdapter::new().await;
                 match stream {

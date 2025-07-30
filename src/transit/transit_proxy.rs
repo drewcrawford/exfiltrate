@@ -38,7 +38,7 @@ impl TransitProxy {
 
     ) -> Self {
         let listener = std::net::TcpListener::bind("127.0.0.1:1985").unwrap();
-        eprintln!("Proxy listening on {}", listener.local_addr().unwrap());
+        eprintln!("transit: listening on {}", listener.local_addr().unwrap());
         let shared_accept = Arc::new(Mutex::new(SharedAccept::new()));
         let per_msg_shared_accept = shared_accept.clone();
         let per_thread_shared_accept = shared_accept.clone();

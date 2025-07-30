@@ -9,6 +9,10 @@ serde_json = "1.0"
 thiserror = "2"
 logwise = { version = "0.2", optional = true }
 regex = {version = "1.11", optional=true}
+# for websocket accept
+sha1 = { version = "0.10", optional = true}
+base64 = { version = "0.22", optional = true }
+
 [dev-dependencies]
 logwise = "0.2"
 
@@ -17,7 +21,8 @@ web-time = "1.1"
 wasm_thread = "0.3"
 web-sys = {version = "0.3", features = [
     "WebSocket",
-    "ErrorEvent"
+    "ErrorEvent",
+    "CloseEvent",
 ]}
 # for spawn_local
 wasm-bindgen-futures = "0.4"
@@ -26,7 +31,7 @@ wasm-bindgen = "0.2"
 continue = "0.1"
 
 [features]
-transit = ["dep:regex"] # primarily used for logwise parsing
+transit = ["dep:regex","dep:base64", "dep:sha1"] # primarily used for logwise parsing
 logwise = ["dep:logwise"]
 
 [[bin]]

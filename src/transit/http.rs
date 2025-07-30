@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
+use base64::Engine;
 use crate::transit::transit_proxy::TransitProxy;
 
 
@@ -22,6 +23,11 @@ enum HTTPParseResult {
     Post(Vec<u8>),
     SSE,
     NotFound,
+    Websocket(WebsocketInfo),
+}
+
+struct WebsocketInfo {
+    key: String,
 }
 
 impl HTTPParser {
@@ -153,9 +159,12 @@ impl HTTPParser {
             let body = self.buf[pos..pos + content_length].to_vec();
             self.buf.clear();
             HTTPParseResult::Post(body)
+        } else if method == b"GET" && headers.get("upgrade").map(|s| s.as_str()) == Some("websocket") {
+            let key = headers.get("sec-websocket-key").map(|s| s.as_str()).unwrap_or("").to_owned();
+            HTTPParseResult::Websocket(WebsocketInfo {key})
         }
         else {
-            let f = format!("Unsupported method or URL: {} {}", String::from_utf8_lossy(method), String::from_utf8_lossy(url));
+            let f = format!("request {}", String::from_utf8_lossy(&self.buf));
             self.buf.clear();
             HTTPParseResult::Rejected(f)
         }
@@ -255,6 +264,27 @@ impl Session {
                     eprintln!("Sent 400 Bad Request response: {}", reason);
                     //continue to next request
                 }
+                HTTPParseResult::Websocket(info) => {
+                    //https://datatracker.ietf.org/doc/html/rfc6455#section-1.3
+                    //honestly the accept field is ridiculous
+                    let concat = format!("{}{}", info.key, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+                    use sha1::Digest;
+                    let mut hasher = sha1::Sha1::default();
+                    hasher.update(concat.as_bytes());
+                    let hash = hasher.finalize();
+                    let accept = base64::prelude::BASE64_STANDARD.encode(&hash);
+                    let response = format!(
+                        "HTTP/1.1 101 Switching Protocols\r\n\
+                         Upgrade: websocket\r\n\
+                         Connection: Upgrade\r\n\
+                         Sec-WebSocket-Accept: {accept}\r\n\
+                         \r\n",
+                        accept = accept
+                    );
+                    self.stream.as_mut().unwrap().write_all(response.as_bytes()).unwrap();
+                    self.stream.as_mut().unwrap().flush().unwrap();
+                    eprintln!("Sent 101 Switching Protocols upgrade");
+                }
             }
         }
     }
@@ -325,7 +355,7 @@ impl Server {
 
     fn on_accept(stream: std::net::TcpStream, addr: std::net::SocketAddr, proxy: Arc<Mutex<TransitProxy>>, sessions: Arc<Mutex<Option<MessageQueue>>>) {
         //start a new thread to handle the connection
-        eprintln!("Accepted connection from {}", addr);
+        eprintln!("http: Accepted connection from {}", addr);
 
         std::thread::Builder::new()
             .name(format!("exfiltrate-server-{}", addr))
