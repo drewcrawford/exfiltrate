@@ -37,31 +37,41 @@ impl ReadState {
     }
 
     fn add_bytes(&mut self, bytes: &[u8]) {
+        // eprintln!("add_bytes: Adding {} bytes to buffer (current size: {})", bytes.len(), self.buf.len());
+        // eprintln!("add_bytes: New bytes: {:?}", &bytes[..bytes.len().min(20)]);
+        // eprintln!("add_bytes: Buffer before: {:?}", &self.buf[..self.buf.len().min(20)]);
         self.buf.extend_from_slice(bytes);
+        // eprintln!("add_bytes: Buffer after: {:?} (total size: {})", &self.buf[..self.buf.len().min(40)], self.buf.len());
     }
 
     fn pop_msg(&mut self) -> Option<Box<[u8]>> {
+        // eprintln!("pop_msg: Called with buffer size {}", self.buf.len());
         if self.buf.len() < 4 {
-            // eprintln!("Not enough data to read size, current buffer length: {}", self.buf.len());
+            // eprintln!("pop_msg: Not enough data to read size, current buffer length: {}", self.buf.len());
             return None; // Not enough data to read size
         }
 
         let size_bytes = &self.buf[..4];
         let size = u32::from_le_bytes(size_bytes.try_into().unwrap()) as usize;
-        eprintln!("Size_bytes: {:?}, size: {:?}", size_bytes, size);
+        // eprintln!("pop_msg: Size_bytes: {:?}, size: {:?}, buffer len: {}", size_bytes, size, self.buf.len());
+        // eprintln!("pop_msg: Full buffer preview (first 60 bytes): {:?}", &self.buf[..self.buf.len().min(60)]);
 
         if size > 10_000 {
+            eprintln!("ERROR: Invalid message size {} detected. Buffer contents: {:?}", size, &self.buf[..self.buf.len().min(100)]);
             panic!("Probably the wrong size.");
         }
 
         if self.buf.len() < size + 4 {
-            // eprintln!("Not enough data to read {}, current buffer length: {}", size, self.buf.len());
+            // eprintln!("pop_msg: Not enough data to read full message. Need {}, have {}", size + 4, self.buf.len());
             return None; // Not enough data to read the full message
         }
 
-
+        // eprintln!("pop_msg: Extracting message from bytes [4..{}]", size + 4);
         let msg = self.buf[4..size + 4].to_vec().into_boxed_slice();
-        self.buf.drain(..size + 4); // Remove the processed message from the buffer
+        // eprintln!("pop_msg: Extracted message: {:?}", &msg[..msg.len().min(20)]);
+        // eprintln!("pop_msg: About to drain bytes [0..{}] from buffer", size + 4);
+        self.buf.drain(..size + 4);
+        // eprintln!("pop_msg: Buffer after drain: {:?} (size: {})", &self.buf[..self.buf.len().min(50)], self.buf.len());
         Some(msg)
     }
 }
@@ -93,30 +103,29 @@ impl<T: Transport> BidirectionalProxy<T> {
             .name("exfiltrate::BidirectionalProxy".to_owned())
             .spawn(move || {
                 loop { //the entire flow
-                    //read phase.  First we read bytes from the transport and add them to the partial read buffer.
                     let mut buf = vec![0u8; 1024];
                     let mut transport = move_read.transport.lock().unwrap();
                     let mut partial_read = move_read.partial_read.lock().unwrap();
-                    'read: loop {
-                        // eprintln!("bidirectional proxy read loop");
-                        match transport.read_nonblock(&mut buf) {
-                            Ok(size) if size > 0 => {
-                                eprintln!("bidi: Read {} bytes from transport", size);
-                                partial_read.add_bytes(&buf[0..size]);
-                            }
-                            Ok(_) => {
-                                // eprintln!("No more data to read from transport, exiting read phase");
-                                break 'read; //move to pop phase
-                            }
-                            Err(e) => {
-                                eprintln!("Error reading from transport: {}", e);
-                                break 'read; // Exit the loop on error
-                            }
+                    let did_read;
+                    match transport.read_nonblock(&mut buf) {
+                        Ok(size) if size > 0 => {
+                            // eprintln!("bidi: Initial read of {} bytes from transport, first 10 bytes: {:?}", size, &buf[..size.min(10)]);
+                            partial_read.add_bytes(&buf[0..size]);
+                            did_read = true;
+                        }
+                        Ok(_) => {
+                            did_read = false;
+                            // eprintln!("No initial data to read from transport, starting read loop");
+                        }
+                        Err(e) => {
+                            eprintln!("Error reading from transport: {}", e);
+                            did_read = false;
+                            break; // Exit the loop on error
                         }
                     }
-                    //pop phase
-                    'pop: while let Some(msg) = partial_read.pop_msg() {
-                        eprintln!("Pop message of size {}", msg.len());
+                    //now try to pop
+                    if let Some(msg) = partial_read.pop_msg() {
+                        // eprintln!("Pop message of size {}", msg.len());
                         // Call the provided function with the message
                         let buf = recv(msg);
                         match buf {
@@ -124,7 +133,8 @@ impl<T: Transport> BidirectionalProxy<T> {
                                 // If the function returns a response, send it back
                                 let size = buf.len() as u32;
                                 let size_bytes = size.to_le_bytes();
-                                eprintln!("bidi: Sending response {:?} to transport {:?}", String::from_utf8_lossy(&buf), transport);
+                                // eprintln!("bidi: Sending response of {} bytes, size_bytes: {:?}, first 10 data bytes: {:?}",
+                                //           buf.len(), size_bytes, &buf[..buf.len().min(10)]);
                                 transport.write_block(&size_bytes).unwrap();
                                 transport.write_block(&buf).unwrap();
                                 transport.flush().unwrap();
@@ -132,16 +142,18 @@ impl<T: Transport> BidirectionalProxy<T> {
                             None => {
                                 eprintln!("bidi: Function returned None, not sending response");
                                 // If the function returns None, do nothing
-                                continue 'pop;
                             }
                         }
                     }
-                    // eprintln!("bidirectional proxy exiting");
-                    //release our locks
-                    drop(transport);
-                    drop(partial_read);
-                    //before the next iteration, let's sleep a bit
-                    crate::sys::thread::sleep(crate::sys::time::Duration::from_millis(100));
+                    else if !did_read {
+                        // eprintln!("bidirectional proxy exiting");
+                        //release our locks
+                        drop(transport);
+                        drop(partial_read);
+                        // If no data was read, we can sleep a bit to avoid busy waiting
+                        // eprintln!("bidi: No data read, sleeping for 100ms");
+                        crate::sys::thread::sleep(crate::sys::time::Duration::from_millis(100));
+                    }
                 }
                 //exit main loop
             }).unwrap();

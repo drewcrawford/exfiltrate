@@ -206,8 +206,12 @@ impl Transport for WebSocketOrStream {
                 Ok(())
             }
             WebSocketOrStream::WebSocket(stream) => {
+                eprintln!("WebSocket write_block: data_len={}, first 10 bytes: {:?}", 
+                    data.len(), &data[..data.len().min(10)]);
                 let frame = WebsocketFrame::new(data.to_vec(), false);
                 let bytes = frame.to_bytes();
+                eprintln!("WebSocket frame bytes: len={}, first 20 bytes: {:?}", 
+                    bytes.len(), &bytes[..bytes.len().min(20)]);
                 stream.tcp.write_block(&bytes)?;
                 Ok(())
             }
@@ -237,6 +241,8 @@ impl Transport for WebSocketOrStream {
                 if !stream.out_buf.is_empty() {
                     //just return the data from the output buffer
                     let bytes_to_copy = stream.out_buf.len().min(buf.len());
+                    eprintln!("WebSocket read from out_buf: bytes_to_copy={}, out_buf_remaining={}", 
+                        bytes_to_copy, stream.out_buf.len() - bytes_to_copy);
                     buf[..bytes_to_copy].copy_from_slice(&stream.out_buf[..bytes_to_copy]);
                     //remove the bytes from the output buffer
                     stream.out_buf.drain(..bytes_to_copy);
@@ -257,6 +263,10 @@ impl Transport for WebSocketOrStream {
                 let mut private_buf = vec![0; 1024]; //temporary buffer
 
                 let bytes_read = stream.tcp.read_nonblock(&mut private_buf)?;
+                if bytes_read > 0 {
+                    // eprintln!("WebSocket read from TCP: bytes_read={}, in_buf_size_before={}, in_buf_size_after={}",
+                    //     bytes_read, stream.in_buf.len(), stream.in_buf.len() + bytes_read);
+                }
                 stream.in_buf.extend_from_slice(&private_buf[..bytes_read]);
                 try_parse_frame(stream, buf) //try to parse a frame
             }
@@ -266,9 +276,13 @@ impl Transport for WebSocketOrStream {
 
 fn try_parse_frame(stream: &mut WebsocketStream, buf: &mut [u8]) -> Result<usize, Error> {
     //try to parse a frame
+    // eprintln!("try_parse_frame: in_buf len={}, out_buf len={}, buf capacity={}", stream.in_buf.len(), stream.out_buf.len(), buf.len());
     match WebsocketFrame::from_bytes(&stream.in_buf) {
         Ok((mut frame, size)) => {
-            eprintln!("WebSocket Frame Parsed with size {}",size);
+            // eprintln!("WebSocket Frame Parsed with size {}",size);
+            // eprintln!("WebSocket frame parsed: frame_size={}, data_len={}, first_10_bytes={:?}",
+            //     size, frame.data.len(),
+            //     &frame.data[..frame.data.len().min(10)]);
             //copy the data to the output buffer
             let bytes_to_copy = frame.data.len().min(buf.len());
             buf[..bytes_to_copy].copy_from_slice(&frame.data[..bytes_to_copy]);
@@ -276,7 +290,9 @@ fn try_parse_frame(stream: &mut WebsocketStream, buf: &mut [u8]) -> Result<usize
             stream.in_buf.drain(..size);
             //place additional bytes in the output buffer
             if frame.data.len() > bytes_to_copy {
-                stream.out_buf.extend_from_slice(&frame.data[bytes_to_copy..]);
+                // eprintln!("WebSocket frame data larger than buffer: data_len={}, buf_len={}, overflow={}",
+                //     frame.data.len(), buf.len(), frame.data.len() - bytes_to_copy);
+                // stream.out_buf.extend_from_slice(&frame.data[bytes_to_copy..]);
             }
             Ok(bytes_to_copy)
         }
@@ -537,7 +553,7 @@ impl WebsocketFrame {
         if bytes.len() == 0 {
             return Err(WebsocketFrameError::FrameTooShort);
         }
-        println!("WebsocketFrame::from_bytes: {:?}", bytes);
+        // println!("WebsocketFrame::from_bytes: {:?}", bytes);
         if bytes.len() < 2 {
             return Err(WebsocketFrameError::FrameTooShort);
         }
@@ -589,7 +605,7 @@ impl WebsocketFrame {
                 data[i] ^= masking_key[i % 4];
             }
         }
-        eprintln!("data: {:?} length: {:?}", &data, data.len());
+        // eprintln!("data: {:?} length: {:?}", &data, data.len());
         let frame = WebsocketFrame { data, mask };
         Ok((frame, data_begin + len))
     }
