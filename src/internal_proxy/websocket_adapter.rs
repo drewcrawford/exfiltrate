@@ -11,6 +11,7 @@ use wasm_bindgen::closure::Closure;
 #[derive(Debug)]
 pub struct WebsocketAdapter {
     read_recv:  Mutex<std::sync::mpsc::Receiver<Vec<u8>>>,
+    send_send: continue_stream::Sender<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -61,6 +62,7 @@ impl WebsocketAdapter {
         //put ws communication on its own thread
         let (c,f) = r#continue::continuation();
         let (read_send,read_recv) = std::sync::mpsc::channel();
+        let (send_send,send_recv) = continue_stream::continuation();
 
         crate::sys::thread::Builder::new()
             .name("exfiltrate::WebsocketAdapter".to_owned())
@@ -71,6 +73,7 @@ impl WebsocketAdapter {
                 let c = OneShot::new(c);
                 match ws {
                     Ok(ws) => {
+                        ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
                         let move_c = c.clone();
                         let onopen_callback = Closure::wrap(Box::new(move |event: web_sys::Event| {
                             web_sys::console::log_1(&"WebSocket opened!".into());
@@ -93,14 +96,50 @@ impl WebsocketAdapter {
                         }) as Box<dyn FnMut(_)>);
                         ws.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
                         onclose_callback.forget(); //leak the closure
-                        std::mem::forget(read_send); //todo
                         let onmessage_callback = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
-                            web_sys::console::log_1(&"WebSocket received message: ".into());
-                            todo!();
+                            if let Ok(abuf) = event.data().dyn_into::<web_sys::js_sys::ArrayBuffer>() {
+                                let u8_array = web_sys::js_sys::Uint8Array::new(&abuf);
+                                let mut vec = vec![0; u8_array.length() as usize];
+                                u8_array.copy_to(&mut vec[..]);
+                                web_sys::console::log_1(&format!("Received binary message of length: {}", vec.len()).into());
+                                read_send.send(vec);
+                            }
+                            else {
+                                let str = format!("Received non-binary message: {:?}", event.data());
+                                web_sys::console::log_1(&str.into());
+                                todo!()
+                            }
                             return;
                         }) as Box<dyn FnMut(_)>);
                         ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
                         onmessage_callback.forget(); //leak the closure
+
+                        //set up an async task to read from the stream
+                        wasm_bindgen_futures::spawn_local(async move {
+                           loop {
+                               let msg: Option<Vec<u8>> = send_recv.receive().await;
+                               web_sys::console::log_1(&"WebSocketAdapter: will send data".into());
+                               if msg.is_none() {
+                                   web_sys::console::log_1(&"WebSocketAdapter: send_recv closed".into());
+                                   break;
+                               }
+                               let msg = msg.unwrap();
+                               //can't use send_with_u8_array, see https://github.com/wasm-bindgen/wasm-bindgen/issues/4101
+                               let len = msg.len();
+                               let msg = web_sys::js_sys::Uint8Array::from(msg.as_slice());
+                               let msg = msg.buffer();
+                               let op = ws.send_with_array_buffer(&msg);
+                               match op {
+                                   Ok(_) => {
+                                       web_sys::console::log_1(&format!("WebSocketAdapter: sent {} bytes", len).into());
+                                   }
+                                   Err(e) => {
+                                       web_sys::console::error_1(&format!("WebSocketAdapter: failed to send data: {:?}", e).into());
+                                       break;
+                                   }
+                               }
+                           }
+                        });
 
 
                     }
@@ -118,6 +157,10 @@ impl WebsocketAdapter {
                     .expect("failed to patch close");
                 wrapper.forget();
 
+
+
+
+
             }).unwrap();
 
         match f.await {
@@ -125,6 +168,7 @@ impl WebsocketAdapter {
                 logwise::info_sync!("WebsocketAdapter created successfully");
                 Ok(WebsocketAdapter {
                     read_recv: Mutex::new(read_recv),
+                    send_send,
                 })
             }
             Err(e) => {
@@ -137,13 +181,14 @@ impl WebsocketAdapter {
 
 impl Transport for WebsocketAdapter {
     fn write_block(&mut self, data: &[u8]) -> Result<(), crate::bidirectional_proxy::Error> {
-        logwise::error_sync!("WebsocketAdapter::write_block is not implemented yet");
-        todo!("Implement WebsocketAdapter::write_block");
+        web_sys::console::log_1(&format!("WebsocketAdapter::write_block: sending {} bytes", data.len()).into());
+        self.send_send.send(data.to_vec());
+        Ok(())
     }
 
     fn flush(&mut self) -> Result<(), crate::bidirectional_proxy::Error> {
-        logwise::error_sync!("WebsocketAdapter::flush is not implemented yet");
-        todo!("Implement WebsocketAdapter::flush");
+        //nothing to do!
+        Ok(())
     }
 
     fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, crate::bidirectional_proxy::Error> {

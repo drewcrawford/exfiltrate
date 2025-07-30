@@ -48,6 +48,9 @@ impl ReadState {
 
         let size_bytes = &self.buf[..4];
         let size = u32::from_le_bytes(size_bytes.try_into().unwrap()) as usize;
+        if size > 10_000 {
+            panic!("Probably the wrong size.");
+        }
 
         if self.buf.len() < size + 4 {
             // eprintln!("Not enough data to read {}, current buffer length: {}", size, self.buf.len());
@@ -124,6 +127,7 @@ impl<T: Transport> BidirectionalProxy<T> {
                                 transport.flush().unwrap();
                             }
                             None => {
+                                eprintln!("bidi: Function returned None, not sending response");
                                 // If the function returns None, do nothing
                                 continue 'pop;
                             }

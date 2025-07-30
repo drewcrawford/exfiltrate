@@ -7,6 +7,7 @@ use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
 use crate::transit::http::WebSocketOrStream;
 use crate::transit::log_proxy::LogProxy;
 
+#[derive(Debug)]
 pub struct Accept {
     bidirectional: crate::bidirectional_proxy::BidirectionalProxy<crate::transit::http::WebSocketOrStream>,
     addr: String,
@@ -30,6 +31,7 @@ pub struct SharedAccept {
 pub struct TransitProxy {
     shared_accept: Arc<Mutex<SharedAccept>>,
     message_receiver: std::sync::mpsc::Receiver<crate::jrpc::Response<serde_json::Value>>,
+    message_sender: std::sync::mpsc::Sender<crate::jrpc::Response<serde_json::Value>>,
 
 }
 
@@ -43,6 +45,32 @@ pub enum Error {
     JRPCError(#[from] crate::jrpc::Error),
 }
 
+fn bidi_fn(message_sender: &std::sync::mpsc::Sender<crate::jrpc::Response<serde_json::Value>>, per_msg_shared_accept: &Arc<Mutex<SharedAccept>>, msg: Box<[u8]>) -> Option<Box<[u8]>> {
+    eprintln!("transit_proxy received message: {:?}", String::from_utf8_lossy(&msg));
+    //try parsing as a response
+    let response: Result<crate::jrpc::Response<serde_json::Value>, _> = serde_json::from_slice(&msg);
+    match response {
+        Ok(response) => {
+            message_sender.send(response).unwrap();
+            None // We don't need to send a response back, just notify the receiver
+        }
+        Err(_) => {
+            //try parsing as notification instead
+            let notification: Result<crate::jrpc::Notification, _> = serde_json::from_slice(&msg);
+            match notification {
+                Ok(notification) => {
+                    eprintln!("Received notification: {:?}", notification);
+                    per_msg_shared_accept.lock().unwrap().received_notification(notification);
+                    None
+                }
+                Err(e) => {
+                    panic!("Failed to parse message as response or notification: {}", e);
+                }
+            }
+        }
+    }
+}
+
 impl TransitProxy {
     pub fn new(
 
@@ -52,37 +80,16 @@ impl TransitProxy {
         let shared_accept = Arc::new(Mutex::new(SharedAccept::new()));
         let per_msg_shared_accept = shared_accept.clone();
         let per_thread_shared_accept = shared_accept.clone();
+
         let (message_sender, message_receiver) = std::sync::mpsc::channel();
+        let per_msg_message_sender = message_sender.clone();
         std::thread::Builder::new()
             .name("exfiltrate::TransitProxy".to_string())
             .spawn( move || {
                 let stream = listener.accept().unwrap();
                 eprintln!("transit_proxy accepted internal_proxy from {}", stream.0.peer_addr().unwrap());
-                let bidirectional_proxy = crate::bidirectional_proxy::BidirectionalProxy::new(WebSocketOrStream::Stream(stream.0), move |msg| {
-                    eprintln!("transit_proxy received message: {:?}", String::from_utf8_lossy(&msg));
-                    //try parsing as a response
-                    let response: Result<crate::jrpc::Response<serde_json::Value>, _> = serde_json::from_slice(&msg);
-                    match response {
-                        Ok(response) => {
-                            message_sender.send(response).unwrap();
-                            None // We don't need to send a response back, just notify the receiver
-                        }
-                        Err(_) => {
-                            //try parsing as notification instead
-                            let notification: Result<crate::jrpc::Notification, _> = serde_json::from_slice(&msg);
-                            match notification {
-                                Ok(notification) => {
-                                    eprintln!("Received notification: {:?}", notification);
-                                    per_msg_shared_accept.lock().unwrap().received_notification(notification);
-                                    None
-                                }
-                                Err(e) => {
-                                    panic!("Failed to parse message as response or notification: {}", e);
-                                }
-                            }
-                        }
-                    }
-
+                let bidirectional_proxy = crate::bidirectional_proxy::BidirectionalProxy::new(WebSocketOrStream::Stream(stream.0), move |msg|  {
+                    bidi_fn(&per_msg_message_sender,&per_msg_shared_accept, msg)
                 });
                 let peer_string = format!("{}", stream.1);
                 per_thread_shared_accept.lock().unwrap().latest_accept = Some(Accept { bidirectional: bidirectional_proxy, addr:peer_string });
@@ -91,6 +98,7 @@ impl TransitProxy {
         TransitProxy {
             shared_accept,
             message_receiver,
+            message_sender
         }
     }
 
@@ -102,8 +110,24 @@ impl TransitProxy {
         shared.process_notifications = Box::new(process_notifications);
     }
 
-    pub(crate) fn change_accept(&self, new_accept: Option<Accept>) {
-        self.shared_accept.lock().unwrap().latest_accept =  new_accept;
+    pub(crate) fn change_accept(&self, new_accept: Option<WebSocketOrStream>) {
+
+        let bidi = match new_accept {
+            Some(ws) => {
+                let move_sender = self.message_sender.clone();
+                let move_shared_accept = self.shared_accept.clone();
+                let bidirectional = crate::bidirectional_proxy::BidirectionalProxy::new(ws, move |msg| {
+                    let move_sender = move_sender.clone();
+                    bidi_fn(&move_sender, &move_shared_accept, msg)
+                });
+                Some(Accept::new(bidirectional, "WebSocket".to_string()))
+            }
+            None => None,
+        };
+        let mut shared = self.shared_accept.lock().unwrap();
+        shared.latest_accept = bidi;
+        eprintln!("transit: Changed accept to {:?}", shared.latest_accept);
+
     }
 }
 

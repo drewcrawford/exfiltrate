@@ -23,12 +23,15 @@ web-sys = {version = "0.3", features = [
     "WebSocket",
     "ErrorEvent",
     "CloseEvent",
+    "BinaryType"
 ]}
 # for spawn_local
 wasm-bindgen-futures = "0.4"
 # for closure
 wasm-bindgen = "0.2"
 continue = "0.1"
+# for websocket routing
+continue_stream = {path = "../continue_stream"}
 
 [features]
 transit = ["dep:regex","dep:base64", "dep:sha1"] # primarily used for logwise parsing
