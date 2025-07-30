@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
@@ -11,6 +12,159 @@ enum ParseState {
     Body(usize),
 }
 
+struct HTTPParser {
+    buf: Vec<u8>,
+}
+
+enum HTTPParseResult {
+    NotReady,
+    Rejected(String),
+    Post(Vec<u8>),
+    SSE,
+    NotFound,
+}
+
+impl HTTPParser {
+    fn new() -> Self {
+        HTTPParser {
+            buf: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, data: &[u8]) {
+        self.buf.extend_from_slice(data);
+    }
+
+    fn pop(&mut self) -> HTTPParseResult {
+        //parse the HTTP header section
+        let lines = self.buf.split(|c| *c == b'\n');
+        let mut http_lines = Vec::new();
+        let mut pos = 0;
+        let mut found_blank = false;
+        for line in lines {
+            if line == b"" {
+                //blank line indicates end of headers
+                pos += 1; //newline
+                found_blank = true;
+                break;
+            }
+            else if line == b"\r" {
+                //blank line indicates end of headers
+                pos += 2; //carriage return + newline
+                found_blank = true;
+                break;
+            }
+            else {
+                http_lines.push(line);
+                pos += line.len() + 1; //newline
+            }
+
+        }
+        if !found_blank {
+            return HTTPParseResult::NotReady; //not enough data to parse
+        }
+        let request_line = match http_lines.first() {
+            Some(line) => line,
+            None => {
+                self.buf.clear();
+                return HTTPParseResult::Rejected("No request line found".to_string())
+            }
+        };
+
+        //get method, url and version
+        let mut split_line = request_line.split(|&b| b == b' ');
+        let method = match split_line.next() {
+            Some(method) => method,
+            None => {
+                let f = format!("Invalid request line: {}", String::from_utf8_lossy(request_line));
+                self.buf.clear();
+                return HTTPParseResult::Rejected(f);
+            },
+        };
+        let url = match split_line.next() {
+            Some(url) => url,
+            None => {
+                let f = format!("Invalid request line: {}", String::from_utf8_lossy(request_line));
+                self.buf.clear();
+                return HTTPParseResult::Rejected(f);
+            },
+        };
+        let version = match split_line.next() {
+            Some(version) => version,
+            None => {
+                let f = format!("Invalid request line: {}", String::from_utf8_lossy(request_line));
+                self.buf.clear();
+                return HTTPParseResult::Rejected(f);
+            },
+        };
+        //the rest of the lines are headers
+        let mut headers = HashMap::new();
+        for line in &http_lines[1..] {
+            let mut split = line.splitn(2, |&b| b == b':');
+            let key = match split.next() {
+                //http headers are case-insensitive, so we convert to lowercase
+                Some(key) => String::from_utf8_lossy(key).trim().to_lowercase().to_owned(),
+                None => {
+                    let f = format!("Invalid header line: {}", String::from_utf8_lossy(request_line));
+                    self.buf.clear();
+                    return HTTPParseResult::Rejected(f);
+                },
+            };
+            let val = match split.next() {
+                Some(val) => String::from_utf8_lossy(val).trim().to_owned(),
+                None => {
+                    let f = format!("Invalid header line: {}", String::from_utf8_lossy(request_line));
+                    self.buf.clear();
+                    return HTTPParseResult::Rejected(f);
+                },
+            };
+            headers.insert(key, val);
+        }
+        //with that out of the way, let's consider some cases.
+        if url != b"/" {
+            self.buf.clear();
+            return HTTPParseResult::NotFound
+        }
+        let accept_header = headers.get("accept").map(|s| s.as_str()).unwrap_or("");
+        if method == b"GET" && accept_header.contains("text/event-stream") {
+            self.buf.clear();
+            HTTPParseResult::SSE
+        }
+        else if method == b"POST" {
+            //we need to read the body
+            let content_length = match headers.get("content-length") {
+                Some(len) => match len.parse::<usize>() {
+                    Ok(len) => len,
+                    Err(_) => {
+                        self.buf.clear();
+                        return HTTPParseResult::Rejected(format!("Invalid Content-Length header: {}", len));
+                    },
+                },
+                None =>  {
+                    let keys = headers.keys().map(|k| k.to_string()).collect::<Vec<_>>();
+                    let msg = format!("Content-Length header not found. Headers: {:?}", keys);
+                    self.buf.clear();
+                    return HTTPParseResult::Rejected(msg);
+                }
+            };
+            if self.buf.len() < pos + content_length {
+                return HTTPParseResult::NotReady; //not enough data to parse
+            }
+            let body = self.buf[pos..pos + content_length].to_vec();
+            self.buf.clear();
+            HTTPParseResult::Post(body)
+        }
+        else {
+            let f = format!("Unsupported method or URL: {} {}", String::from_utf8_lossy(method), String::from_utf8_lossy(url));
+            self.buf.clear();
+            HTTPParseResult::Rejected(f)
+        }
+
+
+
+    }
+}
+
 
 pub struct Server {
 }
@@ -20,149 +174,86 @@ pub struct MessageQueue {
 }
 
 impl MessageQueue {
-    pub fn new(stream: TcpStream) -> Self {
+    fn new(stream: TcpStream) -> Self {
         Self {
             stream,
         }
     }
 
-    pub fn send(&mut self, message: &[u8]) {
+    fn send(&mut self, message: &[u8]) -> Result<(), std::io::Error> {
         for line in message.lines() {
             let line = line.unwrap();
-            self.stream.write("data: ".as_bytes()).unwrap();
-            self.stream.write(line.as_bytes()).unwrap();
-            self.stream.write("\r\n".as_bytes()).unwrap();
+            self.stream.write("data: ".as_bytes())?;
+            self.stream.write(line.as_bytes())?;
+            self.stream.write("\r\n".as_bytes())?;
             eprintln!("Sent message to {:?}: {}", self.stream.peer_addr(),format!("data: {}", line));
         }
-        self.stream.write("\r\n\r\n".as_bytes()).unwrap(); // End of message
-        self.stream.flush().expect("Failed to flush stream");
+        self.stream.write("\r\n\r\n".as_bytes())?; // End of message
+        self.stream.flush()?;
+        Ok(())
     }
 }
 
 struct Session {
     stream: Option<TcpStream>,
     proxy: Arc<Mutex<TransitProxy>>,
-    active_sessions: Arc<Mutex<Vec<Mutex<MessageQueue>>>>,
+    active_session: Arc<Mutex<Option<MessageQueue>>>,
 }
 
 impl Session {
-    fn new(stream: std::net::TcpStream, proxy: Arc<Mutex<TransitProxy>>, active_sessions: Arc<Mutex<Vec<Mutex<MessageQueue>>>>) -> Self {
+    fn new(stream: std::net::TcpStream, proxy: Arc<Mutex<TransitProxy>>, active_session: Arc<Mutex<Option<MessageQueue>>>) -> Self {
         Session {
             stream: Some(stream),
             proxy,
-            active_sessions,
+            active_session,
         }
     }
 
     fn run(&mut self) {
-        let mut headers_buf = Vec::new();
-        let mut read_buffer = [0; 1024];
-        let mut parse_state = ParseState::Method;
-        let mut method = None;
-        let mut url = None;
-        let mut body = Vec::new();
+        let mut parser = HTTPParser::new();
+        let mut read_buffer = vec![0; 1024]; // Buffer for reading data
         loop {
-            let mut read_slice;
             match self.stream.as_ref().unwrap().read(&mut read_buffer) {
                 Ok(0) => break, // connection closed
                 Ok(n) => {
-                    read_slice = &read_buffer[..n];
+                    parser.push(&read_buffer[..n]);
                 }
                 Err(e) => {
                     eprintln!("Error reading from stream: {}", e);
                     break;
                 }
             }
-            if parse_state == crate::transit::http::ParseState::Method {
-                // If we are in the method state, we expect to read the request line
-                if let Some(pos) = read_slice.iter().position(|&b| b == b'\n') {
-                    // We have a complete request line
-                    let request_line = &read_slice[..pos];
-                    let request_line_str = String::from_utf8_lossy(request_line);
-                    // Parse the request line
-                    let (method_str, rest) = request_line_str.split_once(' ').expect("Error parsing request line");
-                    let (url_str, _) = rest.split_once(' ').expect("Error parsing request line");
-                    method = Some(method_str.to_string());
-                    url = Some(url_str.to_string());
-                    eprintln!("Method: {method:?}, URL: {url:?}");
-                    parse_state = crate::transit::http::ParseState::Headers;
-                    //advance the read_slice
-                    read_slice = &read_slice[pos + 1..];
-                } else {
-                    // We don't have a complete request line yet, continue reading
-                    continue;
+            match parser.pop() {
+                HTTPParseResult::SSE => {
+                    //begin response
+                    let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n";
+                    self.stream.as_mut().unwrap().write(response).expect("Failed to write to stream");
+                    self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
+                    //set up the message queue
+                    let message_queue = MessageQueue::new(self.stream.take().unwrap());
+                    self.active_session.lock().unwrap().replace(message_queue);
+                    return; //promoted to active session
                 }
-            }
-            if parse_state == crate::transit::http::ParseState::Headers {
-                //search for '\r\n\r\n' to find the end of headers
-                if let Some(pos) = read_slice.windows(4).position(|window| window == b"\r\n\r\n") {
-                    // We have a complete header block
-                    let headers = &read_slice[..pos];
-                    headers_buf.extend_from_slice(headers);
-                    eprintln!("Headers: {}", String::from_utf8_lossy(&headers_buf));
-
-                    if method.as_ref().unwrap() == "GET" && url.as_ref().unwrap() == "/" {
-                        //begin response
-                        let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n";
-                        self.stream.as_mut().unwrap().write(response).expect("Failed to write to stream");
-                        self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
-                        //set up the message queue
-                        let message_queue = MessageQueue::new(self.stream.take().unwrap());
-                        self.active_sessions.lock().unwrap().push(Mutex::new(message_queue));
-                        return; //promoted to active session
-                    }
-                    else if url.as_ref().unwrap() != "/" {
-                        // other requests return 404
-                        let response = b"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found";
-                        self.stream.as_mut().unwrap().write_all(response).expect("Failed to write 404 response");
-                        self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
-                        eprintln!("Sent 404 Not Found response");
-                        // Reset for next request
-                        headers_buf.clear();
-                        body.clear();
-                        parse_state = crate::transit::http::ParseState::Method;
-                        continue; // continue to the next iteration
-
-                    }
-                    //find content-length header
-
-                    let mut content_length = None;
-                    for line in headers.lines() {
-                        let line = line.unwrap();
-                        if let Some((key, value)) = line.split_once(": ") {
-                            if key.eq_ignore_ascii_case("Content-Length") {
-                                content_length = Some(value.parse::<usize>().unwrap());
-                            }
-                        }
-                    }
-
-
-                    parse_state = crate::transit::http::ParseState::Body(content_length.expect("content-length header not found"));
-                    //advance the read_slice
-                    read_slice = &read_slice[pos + 4..];
-                } else {
-                    // We don't have a complete header block yet, continue reading
-                    headers_buf.extend_from_slice(read_slice);
-                    continue;
+                HTTPParseResult::NotFound => {
+                    let response = b"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found";
+                    self.stream.as_mut().unwrap().write_all(response).expect("Failed to write 404 response");
+                    self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
+                    eprintln!("Sent 404 Not Found response");
+                    //continue to next request
                 }
-            }
-            if let crate::transit::http::ParseState::Body(content_length) = parse_state {
-                // We are in the body state, we expect to read the body
-                if read_slice.len() >= content_length {
-                    // We have a complete body
-                    body.extend_from_slice(&read_slice[..content_length]);
-                    let body_str = String::from_utf8_lossy(&body);
-                    eprintln!("Body: {}", body_str);
-
+                HTTPParseResult::Post(body) => {
                     self.handle_body(&body);
-
-                    // Reset for next request
-                    headers_buf.clear();
-                    body.clear();
-                    parse_state = crate::transit::http::ParseState::Method;
-                } else {
-                    // We don't have a complete body yet, continue reading
-                    body.extend_from_slice(read_slice);
+                    //continue to next request
+                }
+                HTTPParseResult::NotReady => {
+                    // continue to read more data
+                }
+                HTTPParseResult::Rejected(reason) => {
+                    let response = format!("HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", reason.len(), reason);
+                    self.stream.as_mut().unwrap().write_all(response.as_bytes()).expect("Failed to write 400 response");
+                    self.stream.as_mut().unwrap().flush().expect("Failed to flush stream");
+                    eprintln!("Sent 400 Bad Request response: {}", reason);
+                    //continue to next request
                 }
             }
         }
@@ -196,24 +287,43 @@ impl Session {
 impl Server {
     pub fn new<A: ToSocketAddrs>(addr: A, proxy: TransitProxy) -> Self {
         //listen on a tcp socket
+        eprintln!("http: starting MCP server on {}", addr.to_socket_addrs().unwrap().next().unwrap());
         let listener = std::net::TcpListener::bind(addr).unwrap();
+        let active_session = Arc::new(Mutex::new(None::<MessageQueue>));
+        let move_active_session = active_session.clone();
+        proxy.bind(move |notification| {
+            let mut sessions = move_active_session.lock().unwrap();
+            if let Some(ref mut session) = *sessions {
+                let as_bytes = serde_json::to_vec(&notification).unwrap();
+                match session.send(&as_bytes) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        eprintln!("http: failed to send notification {:?}: {}", notification, e);
+                        //if we fail to send, we should remove the session
+                        *sessions = None;
+                    }
+                }
+            } else {
+                eprintln!("http: no active session for notification {:?}", notification);
+            }
+        });
         let proxy = Arc::new(Mutex::new(proxy));
-        eprintln!("MCP/HTTP Listening on {}", listener.local_addr().unwrap());
-        let active_sessions = Arc::new(Mutex::new(Vec::new()));
+
+
         let move_proxy = proxy.clone();
         std::thread::Builder::new()
             .name("exfiltrate-server".to_string()).spawn(move || {
 
             loop {
                 let (stream,addr) = listener.accept().unwrap();
-                Self::on_accept(stream, addr, move_proxy.clone(), active_sessions.clone());
+                Self::on_accept(stream, addr, move_proxy.clone(), active_session.clone());
             }
         }).unwrap();
         Server {
         }
     }
 
-    fn on_accept(stream: std::net::TcpStream, addr: std::net::SocketAddr, proxy: Arc<Mutex<TransitProxy>>, sessions: Arc<Mutex<Vec<Mutex<MessageQueue>>>>) {
+    fn on_accept(stream: std::net::TcpStream, addr: std::net::SocketAddr, proxy: Arc<Mutex<TransitProxy>>, sessions: Arc<Mutex<Option<MessageQueue>>>) {
         //start a new thread to handle the connection
         eprintln!("Accepted connection from {}", addr);
 

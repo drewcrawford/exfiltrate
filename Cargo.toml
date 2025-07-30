@@ -9,7 +9,6 @@ serde_json = "1.0"
 thiserror = "2"
 logwise = { version = "0.2", optional = true }
 regex = {version = "1.11", optional=true}
-log = "0.4.27"
 [dev-dependencies]
 logwise = "0.2"
 
@@ -17,13 +16,23 @@ logwise = "0.2"
 web-time = "1.1"
 wasm_thread = "0.3"
 web-sys = {version = "0.3", features = [
-    "WebSocket"
+    "WebSocket",
+    "ErrorEvent"
 ]}
+# for spawn_local
+wasm-bindgen-futures = "0.4"
+# for closure
+wasm-bindgen = "0.2"
+continue = "0.1"
 
 [features]
 transit = ["dep:regex"] # primarily used for logwise parsing
 logwise = ["dep:logwise"]
 
+[[bin]]
+name = "proxy"
+path = "src/proxy_app.rs"
+required-features = ["transit"]
 
 
 [[example]]
