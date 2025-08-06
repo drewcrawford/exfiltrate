@@ -1,10 +1,9 @@
 mod websocket_adapter;
 
 use std::net::TcpStream;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex};
 use crate::internal_proxy::Error::NotConnected;
 use crate::bidirectional_proxy::BidirectionalProxy;
-use crate::spinlock::Spinlock;
 
 #[derive(Debug)]
 pub enum Error {
@@ -27,11 +26,14 @@ enum ProxyState {
 type Stream = TcpStream;
 #[cfg(target_arch = "wasm32")]
 type Stream = websocket_adapter::WebsocketAdapter;
+use crate::spinlock::Spinlock;
 
 #[derive(Debug)]
 pub struct InternalProxy {
     //in practice, notifications are sent from the main thread on wasm, so we can't use a simple Mutex
-    buffered_notifications: Spinlock<Vec<crate::jrpc::Notification>>,
+    buffered_notification_sender: std::sync::mpsc::Sender<crate::jrpc::Notification>,
+    //here we need mutex but we can simply fail if the lock is contended
+    buffered_notification_receiver: Mutex<std::sync::mpsc::Receiver<crate::jrpc::Notification>>,
     //For similar reasons, let's use a dumb spinlock here.
     //Be careful with lock ordering; if you're going to hold both take this one first.
     bidirectional_proxy: Arc<Spinlock<ProxyState>>,
@@ -58,8 +60,10 @@ fn bidi_fn(msg: Box<[u8]>) -> Option<Box<[u8]>> {
 const ADDR: &str = "127.0.0.1:1985";
 impl InternalProxy {
     fn new() -> Self {
+        let (sender, receiver) = std::sync::mpsc::channel();
         let m = InternalProxy {
-            buffered_notifications: Spinlock::new(Vec::new()),
+            buffered_notification_sender: sender,
+            buffered_notification_receiver: Mutex::new(receiver),
             bidirectional_proxy: Arc::new(Spinlock::new(ProxyState::NotConnected)),
         };
         m.reconnect_if_possible();
@@ -139,9 +143,7 @@ impl InternalProxy {
         })
     }
     pub fn buffer_notification(&self, notification: crate::jrpc::Notification) {
-        self.buffered_notifications.with_mut(|n| {
-            n.push(notification);
-        });
+        self.buffered_notification_sender.send(notification).unwrap();
         self.send_buffered_if_possible();
     }
 
@@ -152,11 +154,21 @@ impl InternalProxy {
                 ProxyState::Connected(proxy) => {
                     //send buffered notifications
                     //short lock
-                    let buffered = self.buffered_notifications.with_mut(|n| n.drain(..).collect::<Vec<_>>());
+                    let mut take = Vec::new();
+                    if let Some(buffered_receiver) = self.buffered_notification_receiver.try_lock().ok() {
+                        while let Some(notification) = buffered_receiver.try_recv().ok() {
+                            take.push(notification);
+                        }
+                    }
+                    else {
+                        crate::logging::log(&"ip: Send contended");
 
-                    for msg in buffered {
-                        let msg = serde_json::to_string(&msg).unwrap();
-                        proxy.send(msg.as_bytes()).unwrap();
+                    }
+                    for notification in take {
+                        let msg = serde_json::to_string(&notification).unwrap();
+                        if let Err(e) = proxy.send(msg.as_bytes()) {
+                            crate::logging::log(&format!("ip: Failed to send buffered notification: {}", e));
+                        }
                     }
                 }
                 _ => {
