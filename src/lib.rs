@@ -10,5 +10,6 @@ mod bidirectional_proxy;
 pub mod logwise;
 mod sys;
 mod spinlock;
+mod logging;
 
 pub use mcp::tools;

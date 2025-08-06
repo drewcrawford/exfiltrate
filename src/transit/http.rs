@@ -206,12 +206,12 @@ impl Transport for WebSocketOrStream {
                 Ok(())
             }
             WebSocketOrStream::WebSocket(stream) => {
-                eprintln!("WebSocket write_block: data_len={}, first 10 bytes: {:?}", 
-                    data.len(), &data[..data.len().min(10)]);
+                // eprintln!("WebSocket write_block: data_len={}, first 10 bytes: {:?}",
+                //     data.len(), &data[..data.len().min(10)]);
                 let frame = WebsocketFrame::new(data.to_vec(), false);
                 let bytes = frame.to_bytes();
-                eprintln!("WebSocket frame bytes: len={}, first 20 bytes: {:?}", 
-                    bytes.len(), &bytes[..bytes.len().min(20)]);
+                // eprintln!("WebSocket frame bytes: len={}, first 20 bytes: {:?}",
+                //     bytes.len(), &bytes[..bytes.len().min(20)]);
                 stream.tcp.write_block(&bytes)?;
                 Ok(())
             }

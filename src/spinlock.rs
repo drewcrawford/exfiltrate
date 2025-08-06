@@ -15,21 +15,22 @@ impl<T> Spinlock<T> {
     }
 
     fn lock(&self) {
-        let mut spinlock = None;
-        while self.lock.compare_exchange_weak(false, true, std::sync::atomic::Ordering::Acquire, std::sync::atomic::Ordering::Relaxed).is_err() {
-            #[cfg(feature="logwise")] {
-                if spinlock.is_none() {
-                    spinlock = Some(logwise::perfwarn_begin!("exfiltrate::spinlock::Spinlock::lock"));
-                }
-            }
-            #[cfg(not(feature="logwise"))] {
-                spinlock = Some(()); // infer a type
+        while self.lock.compare_exchange(false, true, std::sync::atomic::Ordering::Acquire, std::sync::atomic::Ordering::Relaxed).is_err() {
+            super::logging::log(&format!("spinlock ATTEMPTING lock on type {}", std::any::type_name::<T>()));
+
+            let mut logged = false;
+            if !logged {
+                logged = true;
+                super::logging::log(&format!("spinlock SPINNING on type {}", std::any::type_name::<T>()));
             }
             std::hint::spin_loop();
         }
+        super::logging::log(&format!("spinlock LOCK on type {}", std::any::type_name::<T>()));
+
     }
 
     fn unlock(&self) {
+        super::logging::log(&format!("spinlock UNLOCK on type {}", std::any::type_name::<T>()));
         self.lock.store(false, std::sync::atomic::Ordering::Release);
     }
 

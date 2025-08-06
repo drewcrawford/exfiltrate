@@ -5,6 +5,7 @@ use std::time::Duration;
 use crate::bidirectional_proxy::Transport;
 use wasm_bindgen::JsCast;
 use std::sync::{Arc, Mutex};
+use super::super::logging::log;
 
 use wasm_bindgen::closure::Closure;
 
@@ -67,9 +68,9 @@ impl WebsocketAdapter {
         crate::sys::thread::Builder::new()
             .name("exfiltrate::WebsocketAdapter".to_owned())
             .spawn(move || {
-                logwise::info_sync!("Thread started");
+                log("thread started");
                 let ws = web_sys::WebSocket::new(ADDR);
-                logwise::info_sync!("Created ws {ws}", ws=logwise::privacy::LogIt(&ws));
+                log("WebSocket created");
                 let c = OneShot::new(c);
                 match ws {
                     Ok(ws) => {
@@ -101,7 +102,6 @@ impl WebsocketAdapter {
                                 let u8_array = web_sys::js_sys::Uint8Array::new(&abuf);
                                 let mut vec = vec![0; u8_array.length() as usize];
                                 u8_array.copy_to(&mut vec[..]);
-                                web_sys::console::log_1(&format!("Received binary message of length: {}", vec.len()).into());
                                 read_send.send(vec);
                             }
                             else {
@@ -118,7 +118,7 @@ impl WebsocketAdapter {
                         wasm_bindgen_futures::spawn_local(async move {
                            loop {
                                let msg: Option<Vec<u8>> = send_recv.receive().await;
-                               web_sys::console::log_1(&"WebSocketAdapter: will send data".into());
+                               // web_sys::console::log_1(&"WebSocketAdapter: will send data".into());
                                if msg.is_none() {
                                    web_sys::console::log_1(&"WebSocketAdapter: send_recv closed".into());
                                    break;
@@ -131,7 +131,7 @@ impl WebsocketAdapter {
                                let op = ws.send_with_array_buffer(&msg);
                                match op {
                                    Ok(_) => {
-                                       web_sys::console::log_1(&format!("WebSocketAdapter: sent {} bytes", len).into());
+                                       // web_sys::console::log_1(&format!("WebSocketAdapter: sent {} bytes", len).into());
                                    }
                                    Err(e) => {
                                        web_sys::console::error_1(&format!("WebSocketAdapter: failed to send data: {:?}", e).into());
@@ -165,14 +165,14 @@ impl WebsocketAdapter {
 
         match f.await {
             Ok(_) => {
-                logwise::info_sync!("WebsocketAdapter created successfully");
+                log("WebsocketAdapter created successfully");
                 Ok(WebsocketAdapter {
                     read_recv: Mutex::new(read_recv),
                     send_send,
                 })
             }
             Err(e) => {
-                logwise::error_sync!("Failed to create WebsocketAdapter: {e}", e=logwise::privacy::LogIt(&e));
+                log(&format!("WebsocketAdapter creation failed: {:?}", e));
                 Err(e)
             }
         }
@@ -181,7 +181,7 @@ impl WebsocketAdapter {
 
 impl Transport for WebsocketAdapter {
     fn write_block(&mut self, data: &[u8]) -> Result<(), crate::bidirectional_proxy::Error> {
-        web_sys::console::log_1(&format!("WebsocketAdapter::write_block: sending {} bytes", data.len()).into());
+        // web_sys::console::log_1(&format!("WebsocketAdapter::write_block: sending {} bytes", data.len()).into());
         self.send_send.send(data.to_vec());
         Ok(())
     }
@@ -195,7 +195,7 @@ impl Transport for WebsocketAdapter {
         match self.read_recv.lock().unwrap().try_recv() {
             Ok(data) => {
                 if data.len() > buf.len() {
-                    logwise::error_sync!("WebsocketAdapter::read_nonblock: buffer too small");
+                    log("WebsocketAdapter::read_nonblock: buffer too small");
                     todo!()
                 } else {
                     buf[..data.len()].copy_from_slice(&data);
