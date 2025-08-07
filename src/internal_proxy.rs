@@ -1,9 +1,12 @@
 mod websocket_adapter;
 
+use std::cell::OnceCell;
 use std::net::TcpStream;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, Once};
+use std::sync::atomic::AtomicBool;
 use crate::internal_proxy::Error::NotConnected;
 use crate::bidirectional_proxy::BidirectionalProxy;
+use crate::once_nonlock::OnceNonLock;
 
 #[derive(Debug)]
 pub enum Error {
@@ -14,13 +17,6 @@ static INTERNAL_PROXY: LazyLock<InternalProxy> = LazyLock::new(|| {
     InternalProxy::new()
 });
 
-#[derive(Debug)]
-enum ProxyState {
-    NotConnected,
-    // This state is used on wasm to indicate that we are trying to connect
-    Connecting,
-    Connected(BidirectionalProxy<Stream>),
-}
 
 #[cfg(not(target_arch = "wasm32"))]
 type Stream = TcpStream;
@@ -34,9 +30,8 @@ pub struct InternalProxy {
     buffered_notification_sender: std::sync::mpsc::Sender<crate::jrpc::Notification>,
     //here we need mutex but we can simply fail if the lock is contended
     buffered_notification_receiver: Mutex<std::sync::mpsc::Receiver<crate::jrpc::Notification>>,
-    //For similar reasons, let's use a dumb spinlock here.
-    //Be careful with lock ordering; if you're going to hold both take this one first.
-    bidirectional_proxy: Arc<Spinlock<ProxyState>>,
+
+    bidirectional_proxy: Arc<OnceNonLock<BidirectionalProxy<Stream>>>,
 }
 
 fn bidi_fn(msg: Box<[u8]>) -> Option<Box<[u8]>> {
@@ -64,83 +59,58 @@ impl InternalProxy {
         let m = InternalProxy {
             buffered_notification_sender: sender,
             buffered_notification_receiver: Mutex::new(receiver),
-            bidirectional_proxy: Arc::new(Spinlock::new(ProxyState::NotConnected)),
+            bidirectional_proxy: Arc::new(OnceNonLock::new()),
         };
         m.reconnect_if_possible();
         m
     }
 
     fn reconnect_if_possible(&self) {
-
-        let _wasm_connecting = self.bidirectional_proxy.with_mut(|proxy| {
-            match proxy {
-                ProxyState::Connected(_) => {
-                    //already connected
-                    false
+        #[cfg(not(target_arch = "wasm32"))]
+        self.bidirectional_proxy.try_get_or_init(|| {
+            let s = TcpStream::connect(ADDR);
+            match s {
+                Ok(stream) => {
+                    let stream = crate::bidirectional_proxy::BidirectionalProxy::new(stream, bidi_fn);
+                    stream
                 }
-                ProxyState::Connecting => {
-                    //already connecting
-                    false
-                }
-                ProxyState::NotConnected => {
-                    #[cfg(not(target_arch = "wasm32"))] {
-                        let s = TcpStream::connect(ADDR);
-                        match s {
-                            Ok(stream) => {
-                                let stream = crate::bidirectional_proxy::BidirectionalProxy::new(stream, bidi_fn);
-                                *proxy = ProxyState::Connected(stream);
-                            }
-                            Err(e) => {
-                                eprintln!("ip: Failed to reconnect to {}: {}", ADDR, e);
-                            }
-                        }
-                        false
-                    }
-                    #[cfg(target_arch = "wasm32")] {
-                        *proxy = ProxyState::Connecting;
-                        true
-                    }
+                Err(e) => {
+                    panic!("Failed to reconnect to {}: {}", ADDR, e);
                 }
             }
         });
-
-        #[cfg(target_arch = "wasm32")]
-        if _wasm_connecting {
-            let move_proxy = self.bidirectional_proxy.clone();
-            if web_sys::window().is_none() {
-                web_sys::console::error_1(&"WebsocketAdapter: No window available".into());
-                todo!("Needs thread persist trick?");
-            }
-            wasm_bindgen_futures::spawn_local(async move {
+        #[cfg(target_arch = "wasm32")] {
+            //on wasm, we need to connect asynchronously
+            let f = self.bidirectional_proxy.init_async(async move || {
+                if web_sys::window().is_none() {
+                    web_sys::console::error_1(&"WebsocketAdapter: No window available".into());
+                    todo!("Needs thread persist trick?");
+                }
                 let stream = websocket_adapter::WebsocketAdapter::new().await;
                 match stream {
                     Ok(stream) => {
                         let stream = crate::bidirectional_proxy::BidirectionalProxy::new(stream, bidi_fn);
-                        move_proxy.with_mut(|proxy| {
-                            *proxy = ProxyState::Connected(stream);
-                        });
+                        stream
                     }
                     Err(e) => {
-                        eprintln!("ip: Failed to reconnect to {}: {}", ADDR, e);
+                        panic!("Failed to reconnect to {}: {}", ADDR, e);
                     }
                 }
-            })
+            });
+            wasm_bindgen_futures::spawn_local(f)
         }
-
 
     }
 
     pub fn send_notification(&self, notification: crate::jrpc::Notification) -> Result<(), Error> {
         self.send_buffered_if_possible();
-        self.bidirectional_proxy.with_mut(|proxy| {
-            match proxy {
-                ProxyState::Connected(proxy) => {
-                    let msg = serde_json::to_string(&notification).map_err(|_| NotConnected)?;
-                    proxy.send(msg.as_bytes()).map_err(|_| NotConnected)
-                }
-                _ => Err(NotConnected),
-            }
-        })
+        if let Some(proxy) = self.bidirectional_proxy.get() {
+            let msg = serde_json::to_string(&notification).map_err(|_| NotConnected)?;
+            proxy.send(msg.as_bytes()).map_err(|_| NotConnected)
+        } else {
+            //not connected
+            Err(NotConnected)
+        }
     }
     pub fn buffer_notification(&self, notification: crate::jrpc::Notification) {
         self.buffered_notification_sender.send(notification).unwrap();
@@ -149,33 +119,25 @@ impl InternalProxy {
 
     fn send_buffered_if_possible(&self) {
         self.reconnect_if_possible();
-        self.bidirectional_proxy.with_mut(|proxy| {
-            match proxy {
-                ProxyState::Connected(proxy) => {
-                    //send buffered notifications
-                    //short lock
-                    let mut take = Vec::new();
-                    if let Some(buffered_receiver) = self.buffered_notification_receiver.try_lock().ok() {
-                        while let Some(notification) = buffered_receiver.try_recv().ok() {
-                            take.push(notification);
-                        }
-                    }
-                    else {
-                        crate::logging::log(&"ip: Send contended");
-
-                    }
-                    for notification in take {
-                        let msg = serde_json::to_string(&notification).unwrap();
-                        if let Err(e) = proxy.send(msg.as_bytes()) {
-                            crate::logging::log(&format!("ip: Failed to send buffered notification: {}", e));
-                        }
-                    }
-                }
-                _ => {
-                    //not connected, do nothing
+        if let Some(proxy) = self.bidirectional_proxy.get() {
+            //short lock
+            let mut take = Vec::new();
+            if let Some(buffered_receiver) = self.buffered_notification_receiver.try_lock().ok() {
+                while let Some(notification) = buffered_receiver.try_recv().ok() {
+                    take.push(notification);
                 }
             }
-        });
+            else {
+                crate::logging::log(&"ip: Send contended");
+
+            }
+            for notification in take {
+                let msg = serde_json::to_string(&notification).unwrap();
+                if let Err(e) = proxy.send(msg.as_bytes()) {
+                    crate::logging::log(&format!("ip: Failed to send buffered notification: {}", e));
+                }
+            }
+        }
     }
 
     pub fn current() -> &'static InternalProxy {

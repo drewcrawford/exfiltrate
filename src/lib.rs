@@ -11,5 +11,6 @@ pub mod logwise;
 mod sys;
 mod spinlock;
 mod logging;
+mod once_nonlock;
 
 pub use mcp::tools;
