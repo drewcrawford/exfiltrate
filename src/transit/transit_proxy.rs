@@ -4,17 +4,17 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use crate::jrpc::{Request, Response};
 use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
-use crate::transit::http::WebSocketOrStream;
+use crate::transit::http::{ReadWebSocketOrStream, WriteWebSocketOrStream};
 use crate::transit::log_proxy::LogProxy;
 
 #[derive(Debug)]
 pub struct Accept {
-    bidirectional: crate::bidirectional_proxy::BidirectionalProxy<crate::transit::http::WebSocketOrStream>,
+    bidirectional: crate::bidirectional_proxy::BidirectionalProxy,
     addr: String,
 }
 
 impl Accept {
-    pub fn new(bidirectional: crate::bidirectional_proxy::BidirectionalProxy<crate::transit::http::WebSocketOrStream>, addr: String) -> Self {
+    pub fn new(bidirectional: crate::bidirectional_proxy::BidirectionalProxy, addr: String) -> Self {
         Accept {
             bidirectional,
             addr,
@@ -88,7 +88,11 @@ impl TransitProxy {
             .spawn( move || {
                 let stream = listener.accept().unwrap();
                 eprintln!("transit_proxy accepted internal_proxy from {}", stream.0.peer_addr().unwrap());
-                let bidirectional_proxy = crate::bidirectional_proxy::BidirectionalProxy::new(WebSocketOrStream::Stream(stream.0), move |msg|  {
+                let split = (stream.0.try_clone().unwrap(), stream.0);
+                let write_stream = WriteWebSocketOrStream::Stream(split.0);
+                let read_stream = ReadWebSocketOrStream::Stream(split.1);
+
+                let bidirectional_proxy = crate::bidirectional_proxy::BidirectionalProxy::new(write_stream, read_stream, move |msg|  {
                     bidi_fn(&per_msg_message_sender,&per_msg_shared_accept, msg)
                 });
                 let peer_string = format!("{}", stream.1);
@@ -110,13 +114,13 @@ impl TransitProxy {
         shared.process_notifications = Box::new(process_notifications);
     }
 
-    pub(crate) fn change_accept(&self, new_accept: Option<WebSocketOrStream>) {
+    pub(crate) fn change_accept(&self, new_accept: Option<(WriteWebSocketOrStream, ReadWebSocketOrStream)>) {
 
         let bidi = match new_accept {
             Some(ws) => {
                 let move_sender = self.message_sender.clone();
                 let move_shared_accept = self.shared_accept.clone();
-                let bidirectional = crate::bidirectional_proxy::BidirectionalProxy::new(ws, move |msg| {
+                let bidirectional = crate::bidirectional_proxy::BidirectionalProxy::new(ws.0, ws.1, move |msg| {
                     let move_sender = move_sender.clone();
                     bidi_fn(&move_sender, &move_shared_accept, msg)
                 });

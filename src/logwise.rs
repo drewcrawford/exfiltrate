@@ -33,6 +33,7 @@ impl ForwardingLogger {
         let f = ForwardingLogger{};
         logwise::add_global_logger(Arc::new(f));
     }
+
 }
 
 pub fn begin_capture() {

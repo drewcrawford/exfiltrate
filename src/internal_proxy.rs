@@ -19,10 +19,13 @@ static INTERNAL_PROXY: LazyLock<InternalProxy> = LazyLock::new(|| {
 
 
 #[cfg(not(target_arch = "wasm32"))]
-type Stream = TcpStream;
+type WriteStream = TcpStream;
+#[cfg(not(target_arch = "wasm32"))]
+type ReadStream = TcpStream;
 #[cfg(target_arch = "wasm32")]
-type Stream = websocket_adapter::WebsocketAdapter;
-use crate::spinlock::Spinlock;
+type WriteStream = websocket_adapter::WriteAdapter;
+#[cfg(target_arch = "wasm32")]
+type ReadStream = websocket_adapter::ReadApapter;
 
 #[derive(Debug)]
 pub struct InternalProxy {
@@ -31,7 +34,7 @@ pub struct InternalProxy {
     //here we need mutex but we can simply fail if the lock is contended
     buffered_notification_receiver: Mutex<std::sync::mpsc::Receiver<crate::jrpc::Notification>>,
 
-    bidirectional_proxy: Arc<OnceNonLock<BidirectionalProxy<Stream>>>,
+    bidirectional_proxy: Arc<OnceNonLock<BidirectionalProxy>>,
 }
 
 fn bidi_fn(msg: Box<[u8]>) -> Option<Box<[u8]>> {
@@ -71,7 +74,9 @@ impl InternalProxy {
             let s = TcpStream::connect(ADDR);
             match s {
                 Ok(stream) => {
-                    let stream = crate::bidirectional_proxy::BidirectionalProxy::new(stream, bidi_fn);
+                    let write_stream = stream.try_clone().expect("Failed to clone stream for writing");
+                    let read_stream = stream;
+                    let stream = crate::bidirectional_proxy::BidirectionalProxy::new(write_stream, read_stream, bidi_fn);
                     stream
                 }
                 Err(e) => {
@@ -86,10 +91,10 @@ impl InternalProxy {
                     web_sys::console::error_1(&"WebsocketAdapter: No window available".into());
                     todo!("Needs thread persist trick?");
                 }
-                let stream = websocket_adapter::WebsocketAdapter::new().await;
+                let stream = websocket_adapter::adapter().await;
                 match stream {
                     Ok(stream) => {
-                        let stream = crate::bidirectional_proxy::BidirectionalProxy::new(stream, bidi_fn);
+                        let stream = crate::bidirectional_proxy::BidirectionalProxy::new(stream.0, stream.1, bidi_fn);
                         stream
                     }
                     Err(e) => {

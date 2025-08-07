@@ -1,19 +1,23 @@
 use std::fmt::Debug;
 use std::io::{Read, Write};
+use std::marker::PhantomData;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
 
 /**
 A transport with an internal lock
 */
 
-pub trait Transport: Send + Sync + 'static + Debug {
-    fn write_block(&mut self, data: &[u8]) -> Result<(), Error>;
+pub trait WriteTransport: Send + Sync + 'static + Debug {
+    fn write(&mut self, data: &[u8]) -> Result<(), Error>;
 
     fn flush(&mut self) -> Result<(), Error>;
-    ///Reads as many bytes as possible without blocking.
-    fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, Error>;
+
 }
+pub trait ReadTransport: Send + 'static + Debug {
+    ///Reads as many bytes as possible without blocking.
+    fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, Error>;}
 
 
 
@@ -77,49 +81,43 @@ impl ReadState {
 }
 
 
-#[derive(Debug)]
-struct MoveRead<T> {
-    transport: Mutex<T>,
-    partial_read: Mutex<ReadState>,
-}
 
 #[derive(Debug)]
-pub struct BidirectionalProxy<T: Transport> {
-    move_read: Arc<MoveRead<T>>,
+pub struct BidirectionalProxy {
+    data_sender: Sender<Box<[u8]>>,
 }
 
-impl<T: Transport> BidirectionalProxy<T> {
-    pub fn new<F>(transport: T, recv: F) -> Self
-    where F: Fn(Box<[u8]>) -> Option<Box<[u8]>> + Send + 'static {
-        let read = MoveRead {
-            transport: Mutex::new(transport),
-            partial_read: Mutex::new(ReadState::new()),
-        };
+impl BidirectionalProxy {
+    pub fn new<F,W,R>(write: W, read: R, recv: F) -> Self
+    where F: Fn(Box<[u8]>) -> Option<Box<[u8]>> + Send + 'static,
+    R: ReadTransport, W: WriteTransport  {
 
-        let read = Arc::new(read);
-        let move_read = read.clone();
+        let (s, r) = std::sync::mpsc::channel::<Box<[u8]>>();
+
 
         crate::sys::thread::Builder::new()
             .name("exfiltrate::BidirectionalProxy".to_owned())
             .spawn(move || {
+                let mut read = read;
+                let mut write = write;
+                // we wind up copying it into here
+                let mut partial_read = ReadState::new();
                 loop { //the entire flow
-                    let mut buf = vec![0u8; 1024];
-                    let mut transport = move_read.transport.lock().unwrap();
-                    let mut partial_read = move_read.partial_read.lock().unwrap();
-                    let did_read;
-                    match transport.read_nonblock(&mut buf) {
+                    //todo: this buffer strategy is not as efficient as it could be
+                    let mut buf = vec![0; 1024];
+
+                    let mut did_stuff = false;
+                    match read.read_nonblock(&mut buf) {
                         Ok(size) if size > 0 => {
                             // eprintln!("bidi: Initial read of {} bytes from transport, first 10 bytes: {:?}", size, &buf[..size.min(10)]);
                             partial_read.add_bytes(&buf[0..size]);
-                            did_read = true;
+                            did_stuff = true;
                         }
                         Ok(_) => {
-                            did_read = false;
                             // eprintln!("No initial data to read from transport, starting read loop");
                         }
                         Err(e) => {
                             eprintln!("Error reading from transport: {}", e);
-                            did_read = false;
                             break; // Exit the loop on error
                         }
                     }
@@ -127,6 +125,7 @@ impl<T: Transport> BidirectionalProxy<T> {
                     if let Some(msg) = partial_read.pop_msg() {
                         // eprintln!("Pop message of size {}", msg.len());
                         // Call the provided function with the message
+                        did_stuff = true;
                         let buf = recv(msg);
                         match buf {
                             Some(buf) => {
@@ -135,51 +134,58 @@ impl<T: Transport> BidirectionalProxy<T> {
                                 let size_bytes = size.to_le_bytes();
                                 // eprintln!("bidi: Sending response of {} bytes, size_bytes: {:?}, first 10 data bytes: {:?}",
                                 //           buf.len(), size_bytes, &buf[..buf.len().min(10)]);
-                                transport.write_block(&size_bytes).unwrap();
-                                transport.write_block(&buf).unwrap();
-                                transport.flush().unwrap();
+
+                                write.write(&size_bytes).unwrap();
+                                write.write(&buf).unwrap();
+                                write.flush().unwrap();
                             }
                             None => {
-                                eprintln!("bidi: Function returned None, not sending response");
+                                // eprintln!("bidi: Function returned None, not sending response");
                                 // If the function returns None, do nothing
                             }
                         }
                     }
-                    else if !did_read {
-                        // eprintln!("bidirectional proxy exiting");
-                        //release our locks
-                        drop(transport);
-                        drop(partial_read);
-                        // If no data was read, we can sleep a bit to avoid busy waiting
-                        // eprintln!("bidi: No data read, sleeping for 100ms");
-                        crate::sys::thread::sleep(crate::sys::time::Duration::from_millis(100));
+                    //try handling receive queue
+                    match r.try_recv() {
+                        Ok(msg) => {
+                            // eprintln!("bidi: Received message from channel, size: {}", msg.len());
+                            let size_bytes = (msg.len() as u32).to_le_bytes();
+                            write.write(&size_bytes).unwrap();
+                            write.write(&msg).unwrap();
+                            write.flush().unwrap();
+                            did_stuff = true;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            // eprintln!("bidi: No messages in channel, continuing");
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            eprintln!("bidi: Channel disconnected, exiting loop");
+                            break; // Exit the loop if the channel is disconnected
+                        }
+                    }
+                    if !did_stuff {
+                        // eprintln!("bidi: No data processed, sleeping for a bit");
+                        std::thread::sleep(std::time::Duration::from_millis(10)); // Sleep to avoid busy waiting
                     }
                 }
                 //exit main loop
             }).unwrap();
 
 
-        BidirectionalProxy { move_read: read }
+        BidirectionalProxy {  data_sender: s }
     }
 
     pub fn send(&self, data: &[u8]) -> Result<(), Error> {
-        //write size
-        let size = data.len() as u32;
-        eprintln!("bidi: Sending message {:?} to transport {:?}", String::from_utf8_lossy(&data), self.move_read.transport);
-        let size_bytes = size.to_le_bytes();
-        let mut transport = self.move_read.transport.lock().unwrap();
-        transport.write_block(&size_bytes).unwrap();
-        transport.write_block(&data).unwrap();
-        transport.flush().unwrap();
+        self.data_sender.send(data.to_vec().into_boxed_slice())
+            .map_err(|_| Error::IoError(std::io::Error::new(std::io::ErrorKind::Other, "Failed to send data to proxy")))?;
         Ok(())
     }
 
 }
 
-impl Transport for TcpStream {
-    fn write_block(&mut self, data: &[u8]) -> Result<(), Error> {
-        self.set_nonblocking(false).unwrap();
-        match self.write(data) {
+impl WriteTransport for TcpStream {
+    fn write(&mut self, data: &[u8]) -> Result<(), Error> {
+        match std::io::Write::write(self,data) {
             Ok(size) if size == data.len() => Ok(()),
             Ok(_) => Err(Error::IoError(std::io::Error::new(
                 std::io::ErrorKind::WriteZero,
@@ -190,13 +196,14 @@ impl Transport for TcpStream {
     }
 
     fn flush(&mut self) -> Result<(), Error> {
-        self.set_nonblocking(false).unwrap();
         match std::io::Write::flush(self) {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::IoError(e)),
         }
     }
+}
 
+impl ReadTransport for TcpStream {
     fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         self.set_nonblocking(true).unwrap();
         match self.read(buf) {

@@ -3,7 +3,7 @@ use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use base64::Engine;
-use crate::bidirectional_proxy::{BidirectionalProxy, Error, Transport};
+use crate::bidirectional_proxy::{BidirectionalProxy, Error, WriteTransport, ReadTransport};
 use crate::transit::transit_proxy::{Accept, TransitProxy};
 
 
@@ -177,42 +177,59 @@ impl HTTPParser {
 }
 
 #[derive(Debug)]
-struct WebsocketStream {
+struct WebsocketWriteStream {
     tcp: TcpStream,
-    in_buf: Vec<u8>,
-    out_buf: Vec<u8>,
+    buf: Vec<u8>,
+}
+#[derive(Debug)]
+struct WebsocketReadStream {
+    tcp: TcpStream,
+    tcp_layer_buf: Vec<u8>,
 }
 
-impl WebsocketStream {
-    fn new(tcp: TcpStream,in_buf: Vec<u8>) -> Self {
-        WebsocketStream {
+impl WebsocketWriteStream {
+    fn new(tcp: TcpStream) -> Self {
+        WebsocketWriteStream {
             tcp,
-            in_buf,
-            out_buf: Vec::new(),
+            buf: Vec::new(),
+        }
+    }
+}
+
+impl WebsocketReadStream {
+    fn new(tcp: TcpStream, in_buf: Vec<u8>) -> Self {
+        WebsocketReadStream {
+            tcp,
+            tcp_layer_buf: in_buf,
         }
     }
 }
 
 #[derive(Debug)]
-pub enum WebSocketOrStream {
-    WebSocket(WebsocketStream),
+pub enum ReadWebSocketOrStream {
+    WebSocket(WebsocketReadStream),
     Stream(TcpStream),
 }
-impl Transport for WebSocketOrStream {
-    fn write_block(&mut self, data: &[u8]) -> Result<(), Error> {
+#[derive(Debug)]
+pub enum WriteWebSocketOrStream {
+    WebSocket(WebsocketWriteStream),
+    Stream(TcpStream),
+}
+impl WriteTransport for WriteWebSocketOrStream {
+    fn write(&mut self, data: &[u8]) -> Result<(), Error> {
         match self {
-            WebSocketOrStream::Stream(stream) => {
-                stream.write_block(data)?;
+            Self::Stream(stream) => {
+                WriteTransport::write(stream, data)?;
                 Ok(())
             }
-            WebSocketOrStream::WebSocket(stream) => {
+            Self::WebSocket(stream) => {
                 // eprintln!("WebSocket write_block: data_len={}, first 10 bytes: {:?}",
                 //     data.len(), &data[..data.len().min(10)]);
                 let frame = WebsocketFrame::new(data.to_vec(), false);
                 let bytes = frame.to_bytes();
                 // eprintln!("WebSocket frame bytes: len={}, first 20 bytes: {:?}",
                 //     bytes.len(), &bytes[..bytes.len().min(20)]);
-                stream.tcp.write_block(&bytes)?;
+                WriteTransport::write(&mut stream.tcp, &bytes)?;
                 Ok(())
             }
         }
@@ -220,93 +237,82 @@ impl Transport for WebSocketOrStream {
 
     fn flush(&mut self) -> Result<(), Error> {
         match self {
-            WebSocketOrStream::Stream(stream) => {
-                Transport::flush(stream)?;
+            Self::Stream(stream) => {
+                WriteTransport::flush(stream)?;
                 Ok(())
             }
-            WebSocketOrStream::WebSocket(stream) => {
-                Transport::flush(&mut stream.tcp)?;
+            Self::WebSocket(stream) => {
+                WriteTransport::flush(&mut stream.tcp)?;
                 Ok(())
             }
         }
     }
 
+
+}
+impl ReadTransport for ReadWebSocketOrStream {
     fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         match self {
-            WebSocketOrStream::Stream(stream) => {
+            ReadWebSocketOrStream::Stream(stream) => {
                 let bytes_read = stream.read_nonblock(buf)?;
                 Ok(bytes_read)
             }
-            WebSocketOrStream::WebSocket(stream) => {
-                if !stream.out_buf.is_empty() {
-                    //just return the data from the output buffer
-                    let bytes_to_copy = stream.out_buf.len().min(buf.len());
-                    eprintln!("WebSocket read from out_buf: bytes_to_copy={}, out_buf_remaining={}", 
-                        bytes_to_copy, stream.out_buf.len() - bytes_to_copy);
-                    buf[..bytes_to_copy].copy_from_slice(&stream.out_buf[..bytes_to_copy]);
-                    //remove the bytes from the output buffer
-                    stream.out_buf.drain(..bytes_to_copy);
-                    return Ok(bytes_to_copy);
+            ReadWebSocketOrStream::WebSocket(stream) => {
+                //see if we can parse a frame with no read
+                if let Ok(bytes) = stream.try_parse_frame(buf) && bytes > 0 {
+                    // eprintln!("WebSocket read_nonblock: parsed {} bytes from buffer", bytes);
+                    return Ok(bytes);
                 }
-                else {
-                    match try_parse_frame(stream, buf) {
-                        Ok(0) => {
-                            //not enough data to parse a frame, read more
-                        }
-                        Ok(bytes_read) => {
-                            return Ok(bytes_read); //we successfully parsed a frame
-                        }
-                        Err(e) => return Err(e), //error parsing frame
-                    }
-                }
-                //otherwise do a read
-                let mut private_buf = vec![0; 1024]; //temporary buffer
-
-                let bytes_read = stream.tcp.read_nonblock(&mut private_buf)?;
-                if bytes_read > 0 {
-                    // eprintln!("WebSocket read from TCP: bytes_read={}, in_buf_size_before={}, in_buf_size_after={}",
-                    //     bytes_read, stream.in_buf.len(), stream.in_buf.len() + bytes_read);
-                }
-                stream.in_buf.extend_from_slice(&private_buf[..bytes_read]);
-                try_parse_frame(stream, buf) //try to parse a frame
+                //if we can't parse a frame, we need to read more data
+                //we can abuse the input buf for this
+                let bytes = stream.tcp.read_nonblock(buf).unwrap();
+                //put into the ws buffer
+                stream.tcp_layer_buf.extend_from_slice(&buf[..bytes]);
+                // try to parse a frame again
+                stream.try_parse_frame(buf)
             }
         }
     }
 }
 
-fn try_parse_frame(stream: &mut WebsocketStream, buf: &mut [u8]) -> Result<usize, Error> {
-    //try to parse a frame
-    // eprintln!("try_parse_frame: in_buf len={}, out_buf len={}, buf capacity={}", stream.in_buf.len(), stream.out_buf.len(), buf.len());
-    match WebsocketFrame::from_bytes(&stream.in_buf) {
-        Ok((mut frame, size)) => {
-            // eprintln!("WebSocket Frame Parsed with size {}",size);
-            // eprintln!("WebSocket frame parsed: frame_size={}, data_len={}, first_10_bytes={:?}",
-            //     size, frame.data.len(),
-            //     &frame.data[..frame.data.len().min(10)]);
-            //copy the data to the output buffer
-            let bytes_to_copy = frame.data.len().min(buf.len());
-            buf[..bytes_to_copy].copy_from_slice(&frame.data[..bytes_to_copy]);
-            //remove the bytes from the input buffer
-            stream.in_buf.drain(..size);
-            //place additional bytes in the output buffer
-            if frame.data.len() > bytes_to_copy {
-                // eprintln!("WebSocket frame data larger than buffer: data_len={}, buf_len={}, overflow={}",
-                //     frame.data.len(), buf.len(), frame.data.len() - bytes_to_copy);
-                // stream.out_buf.extend_from_slice(&frame.data[bytes_to_copy..]);
+impl WebsocketReadStream {
+    fn try_parse_frame(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        //try to parse a frame
+        // eprintln!("try_parse_frame: stream_buf len={}", self.tcp_layer_buf.len());
+        match WebsocketFrame::from_bytes(&self.tcp_layer_buf) {
+            Ok((mut frame, size)) => {
+                // eprintln!("WebSocket Frame Parsed with size {}",size);
+                // eprintln!("WebSocket frame parsed: frame_size={}, data_len={}, first_10_bytes={:?}",
+                //     size, frame.data.len(),
+                //     &frame.data[..frame.data.len().min(10)]);
+                //copy the data to the output buffer
+                let bytes_to_copy = frame.data.len().min(buf.len());
+                buf[..bytes_to_copy].copy_from_slice(&frame.data[..bytes_to_copy]);
+                //remove the bytes from the input buffer
+                self.tcp_layer_buf.drain(..size);
+                //place additional bytes in the output buffer
+                if frame.data.len() > bytes_to_copy {
+                    // eprintln!("WebSocket frame data larger than buffer: data_len={}, buf_len={}, overflow={}",
+                    //     frame.data.len(), buf.len(), frame.data.len() - bytes_to_copy);
+                    self.tcp_layer_buf.extend_from_slice(&frame.data[bytes_to_copy..]);
+                }
+                Ok(bytes_to_copy)
             }
-            Ok(bytes_to_copy)
-        }
-        Err(WebsocketFrameError::FrameTooShort) => {
-            Ok(0) //not enough data to parse a frame
-        }
-        Err(WebsocketFrameError::Rejected(reason)) => {
-            eprintln!("WebSocket Frame Rejected: {}", reason);
-            stream.in_buf.drain(..);
-            Err(Error::IoError(std::io::Error::new(std::io::ErrorKind::InvalidData, reason)))
-        }
+            Err(WebsocketFrameError::FrameTooShort) => {
+                Ok(0) //not enough data to parse a frame
+            }
+            Err(WebsocketFrameError::Rejected(reason)) => {
+                eprintln!("WebSocket Frame Rejected: {}", reason);
+                self.tcp_layer_buf.drain(..);
+                Err(Error::IoError(std::io::Error::new(std::io::ErrorKind::InvalidData, reason)))
+            }
 
+        }
     }
 }
+
+
+
 
 
 pub struct Server {
@@ -326,12 +332,12 @@ impl MessageQueue {
     fn send(&mut self, message: &[u8]) -> Result<(), std::io::Error> {
         for line in message.lines() {
             let line = line.unwrap();
-            self.stream.write("data: ".as_bytes())?;
-            self.stream.write(line.as_bytes())?;
-            self.stream.write("\r\n".as_bytes())?;
-            eprintln!("Sent message to {:?}: {}", self.stream.peer_addr(),format!("data: {}", line));
+            std::io::Write::write(&mut self.stream, "data: ".as_bytes()).unwrap();
+            std::io::Write::write(&mut self.stream,line.as_bytes()).unwrap();
+            std::io::Write::write(&mut self.stream,"\r\n".as_bytes()).unwrap();
+            // eprintln!("Sent message to {:?}: {}", self.stream.peer_addr(),format!("data: {}", line));
         }
-        self.stream.write("\r\n\r\n".as_bytes())?; // End of message
+        std::io::Write::write(&mut self.stream,"\r\n\r\n".as_bytes()).unwrap(); // End of message
         std::io::Write::flush(&mut self.stream)?;
         Ok(())
     }
@@ -370,7 +376,7 @@ impl Session {
                 HTTPParseResult::SSE => {
                     //begin response
                     let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n";
-                    self.stream.as_mut().unwrap().write(response).expect("Failed to write to stream");
+                    std::io::Write::write(self.stream.as_mut().unwrap(), response).expect("Failed to write to stream");
                     std::io::Write::flush(self.stream.as_mut().unwrap()).expect("Failed to flush stream");
                     //set up the message queue
                     let message_queue = MessageQueue::new(self.stream.take().unwrap());
@@ -421,8 +427,12 @@ impl Session {
                     //take stream
                     let stream = self.stream.take().unwrap();
                     let addr = format!("{}", stream.peer_addr().unwrap());
+                    let write_stream = WebsocketWriteStream::new(stream.try_clone().unwrap());
+                    let write_stream = WriteWebSocketOrStream::WebSocket(write_stream);
+                    let read_stream = WebsocketReadStream::new(stream, info.leftover_bytes);
+                    let read_stream = ReadWebSocketOrStream::WebSocket(read_stream);
 
-                    self.proxy.lock().unwrap().change_accept(Some(WebSocketOrStream::WebSocket(WebsocketStream::new(stream, info.leftover_bytes))));
+                    self.proxy.lock().unwrap().change_accept(Some((write_stream, read_stream)));
                     return; //promoted to transit proxy
                 }
             }
@@ -436,16 +446,16 @@ impl Session {
                 let as_bytes = serde_json::to_vec(&response).unwrap();
                 let stream = self.stream.as_mut().unwrap();
                 // Write the response back to the stream
-                stream.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ").unwrap();
-                stream.write(as_bytes.len().to_string().as_bytes()).unwrap();
-                stream.write(b"\r\n\r\n").unwrap();
-                stream.write(&as_bytes).unwrap();
+                std::io::Write::write(stream,b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ").unwrap();
+                std::io::Write::write(stream,as_bytes.len().to_string().as_bytes()).unwrap();
+                std::io::Write::write(stream,b"\r\n\r\n").unwrap();
+                std::io::Write::write(stream,&as_bytes).unwrap();
                 std::io::Write::flush(stream).expect("Failed to flush stream");
                 eprintln!("Sent response: {:?}", String::from_utf8_lossy(&as_bytes));
             }
             None => {
                 let stream = self.stream.as_mut().unwrap();
-                stream.write("HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n".as_bytes()).unwrap();
+                std::io::Write::write(stream,"HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n".as_bytes()).unwrap();
                 std::io::Write::flush(stream).expect("Failed to flush stream");
             }
         }
