@@ -9,7 +9,6 @@ mod bidirectional_proxy;
 #[cfg(feature="logwise")]
 pub mod logwise;
 mod sys;
-mod spinlock;
 mod logging;
 mod once_nonlock;
 

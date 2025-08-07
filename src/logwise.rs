@@ -12,7 +12,8 @@ struct ForwardingLogger {
 impl Logger for ForwardingLogger {
     fn finish_log_record(&self, record: LogRecord) {
         let record = record.to_string();
-        eprintln!("Logwise record: {}", record);
+        //presumably logwise can handle the print for us
+        // crate::logging::log(&format!("Logwise: {}", record));
         let n = Notification::new("exfiltrate/logwise/record".to_string(), Some(record.into()));
         InternalProxy::current().buffer_notification(n);
     }
