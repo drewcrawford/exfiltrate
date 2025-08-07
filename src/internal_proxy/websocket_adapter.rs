@@ -86,9 +86,11 @@ pub async fn adapter() -> Result<(WriteAdapter, ReadApapter), Error> {
 
                     let move_c = c.clone();
                     let onerror_callback = Closure::wrap(Box::new(move |event: web_sys::ErrorEvent| {
-                        let error_msg = format!("Websocket error: {}", event.message());
+                        // .message seems problematic in some cases?
+                        let error_description = event.type_();
+                        let error_msg = format!("Websocket error: {}", error_description);
                         web_sys::console::log_1(&error_msg.into());
-                        move_c.send_if_needed(Err(Error::CantConnect(event.message())));
+                        move_c.send_if_needed(Err(Error::CantConnect(error_description)));
                     }) as Box<dyn FnMut(_)>);
                     ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
                     onerror_callback.forget(); //leak the closure
@@ -148,19 +150,7 @@ pub async fn adapter() -> Result<(WriteAdapter, ReadApapter), Error> {
                     c.send_if_needed(Err(Error::CantConnect(e.as_string().unwrap_or_else(|| "Unknown error".to_string()))));
                 }
             }
-            //forbid thread exit
-            let global = web_sys::js_sys::global();
-            let wrapper = Closure::wrap(Box::new(move || {
-                web_sys::console::log_1(&"thread close called".into());
-            }) as Box<dyn Fn()>);
-
-            web_sys::js_sys::Reflect::set(&global, &"close".into(), wrapper.as_ref().unchecked_ref())
-                .expect("failed to patch close");
-            wrapper.forget();
-
-
-
-
+            patch_close();
 
         }).unwrap();
 
@@ -174,6 +164,18 @@ pub async fn adapter() -> Result<(WriteAdapter, ReadApapter), Error> {
             Err(e)
         }
     }
+}
+
+pub fn patch_close() {
+    //forbid thread exit
+    let global = web_sys::js_sys::global();
+    let wrapper = Closure::wrap(Box::new(move || {
+        web_sys::console::log_1(&"thread close called".into());
+    }) as Box<dyn Fn()>);
+
+    web_sys::js_sys::Reflect::set(&global, &"close".into(), wrapper.as_ref().unchecked_ref())
+        .expect("failed to patch close");
+    wrapper.forget();
 }
 
 

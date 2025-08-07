@@ -77,10 +77,10 @@ impl InternalProxy {
                     let write_stream = stream.try_clone().expect("Failed to clone stream for writing");
                     let read_stream = stream;
                     let stream = crate::bidirectional_proxy::BidirectionalProxy::new(write_stream, read_stream, bidi_fn);
-                    stream
+                    Some(stream)
                 }
                 Err(e) => {
-                    panic!("Failed to reconnect to {}: {}", ADDR, e);
+                    return None
                 }
             }
         });
@@ -88,17 +88,17 @@ impl InternalProxy {
             //on wasm, we need to connect asynchronously
             let f = self.bidirectional_proxy.init_async(async move || {
                 if web_sys::window().is_none() {
-                    web_sys::console::error_1(&"WebsocketAdapter: No window available".into());
-                    todo!("Needs thread persist trick?");
+                    crate::internal_proxy::websocket_adapter::patch_close();
                 }
                 let stream = websocket_adapter::adapter().await;
                 match stream {
                     Ok(stream) => {
                         let stream = crate::bidirectional_proxy::BidirectionalProxy::new(stream.0, stream.1, bidi_fn);
-                        stream
+                        Some(stream)
                     }
                     Err(e) => {
-                        panic!("Failed to reconnect to {}: {}", ADDR, e);
+                        crate::logging::log(&format!("ip: Failed to connect to {}: {}", ADDR, e));
+                        None
                     }
                 }
             });

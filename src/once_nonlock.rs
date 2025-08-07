@@ -30,17 +30,25 @@ impl<T> OnceNonLock<T> {
 
     pub fn try_get_or_init<F>(&self, f: F) -> Option<&T>
     where
-        F: FnOnce() -> T,
+        F: FnOnce() -> Option<T>,
     {
         match self.once.compare_exchange(ONCE_INITIAL, ONCE_IN_PROGRESS, Ordering::AcqRel, Ordering::Relaxed) {
             Ok(_) => {
                 // We are the first to call get_or_init, so we initialize the value
                 let value = f();
                 unsafe {
-                    // SAFETY: We have exclusive access to the value
-                    *self.value.get() = ManuallyDrop::new(Some(value));
+                    if let Some(value) = value {
+                        // SAFETY: We have exclusive access to the value
+                        *self.value.get() = ManuallyDrop::new(Some(value));
+                        self.once.store(ONCE_DONE, Ordering::Release);
+
+                    }
+                    else {
+                        //go back to initial state if the value is None
+                        self.once.store(ONCE_INITIAL, Ordering::Release);
+                    }
+
                 }
-                self.once.store(ONCE_DONE, Ordering::Release);
                 unsafe {
                     // SAFETY: We have exclusive access to the value
                     let f = self.value.get();
@@ -70,18 +78,24 @@ impl<T> OnceNonLock<T> {
     }
 
     pub fn init_async<F>(self: &Arc<Self>, f: F) -> impl Future<Output=()> + use<F,T> where
-    F: AsyncFnOnce() -> T {
+    F: AsyncFnOnce() -> Option<T> {
         let  moveme = self.clone();
         async move {
             match moveme.once.compare_exchange(ONCE_INITIAL, ONCE_IN_PROGRESS, Ordering::AcqRel, Ordering::Relaxed) {
                 Ok(_) => {
                     // We are the first to call get_or_init, so we initialize the value
                     let value = f().await;
-                    unsafe {
-                        // SAFETY: We have exclusive access to the value
-                        *moveme.value.get() = ManuallyDrop::new(Some(value));
+                    if let Some(value) = value {
+                        unsafe {
+                            // SAFETY: We have exclusive access to the value
+                            *moveme.value.get() = ManuallyDrop::new(Some(value));
+                        }
+                        moveme.once.store(ONCE_DONE, Ordering::Release);
                     }
-                    moveme.once.store(ONCE_DONE, Ordering::Release);
+                    else {
+                        //go back to initial state if the value is None
+                        moveme.once.store(ONCE_INITIAL, Ordering::Release);
+                    }
                 }
                 Err(ONCE_IN_PROGRESS) => {
 
