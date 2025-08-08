@@ -1,17 +1,17 @@
 #![cfg(target_arch = "wasm32")]
 
 use std::fmt::Display;
-use std::time::Duration;
 use wasm_bindgen::JsCast;
 use std::sync::{Arc, Mutex};
 use super::super::logging::log;
 
 use wasm_bindgen::closure::Closure;
 use crate::bidirectional_proxy::{ReadTransport, WriteTransport};
-
+use crate::once_nonlock::OnceNonLock;
 
 #[derive(Debug)]
 pub enum Error {
+    #[allow(dead_code)]
     CantConnect(String),
 }
 
@@ -58,110 +58,194 @@ pub struct WriteAdapter {
 #[derive(Debug)]
 pub struct ReadApapter {
     recv: std::sync::mpsc::Receiver<Vec<u8>>,
+    buf: Vec<u8>,
+}
+
+static SEND_WORKER_MESSAGE: OnceNonLock<continue_stream::Sender<WorkerMessage>> = OnceNonLock::new();
+
+
+struct ReconnectMessage{
+    func_sender: r#continue::Sender<Result<(WriteAdapter, ReadApapter), Error>>,
+}
+struct SocketClosedMessage;
+
+enum WorkerMessage {
+    Reconnect(ReconnectMessage),
+    SocketClosed(SocketClosedMessage),
+}
+
+async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
+    log("thread started");
+
+
+    let mut socket = None;
+
+    loop {
+        let r = receiver.receive().await;
+        match r {
+            Some(WorkerMessage::Reconnect(reconnect)) => {
+                match &socket {
+                    None => {
+                        log("WebSocketAdapter: received reconnect message");
+                        let (write_send, write_recv) = continue_stream::continuation::<Vec<u8>>();
+                        let (read_send, read_recv) = std::sync::mpsc::channel::<Vec<u8>>();
+
+                        let s = create_web_socket(read_send, write_recv).await;
+                        match s {
+                            Ok(_) => {
+                                log("WebSocketAdapter: WebSocket created successfully");
+                                socket = Some(s);
+                                reconnect.func_sender.send(Ok((
+                                    WriteAdapter {
+                                        send: write_send,
+                                    },
+                                    ReadApapter {
+                                        recv: read_recv,
+                                        buf: Vec::new(),
+                                    },
+                                )));
+                            }
+                            Err(e) => {
+                                log(&format!("WebSocketAdapter: Failed to create WebSocket: {:?}", e));
+                                reconnect.func_sender.send(Err(e));
+                                // Optionally, you could send an error back to the main thread here
+                            }
+                        }
+                    }
+                    Some(socket) => {
+                        //we already have a socket so nothing to do I guess?
+                    }
+                }
+            }
+            Some(WorkerMessage::SocketClosed(SocketClosedMessage)) => {
+                log("WebSocketAdapter: received socket closed message");
+                // Handle socket closed message if needed
+                socket = None; // Reset the socket
+            }
+            None => {
+                log("WebSocketAdapter: receiver closed, exiting thread");
+                break;
+            }
+        }
+    }
+}
+
+async fn create_web_socket(read_send: std::sync::mpsc::Sender<Vec<u8>>, write_recv: continue_stream::Receiver<Vec<u8>>) -> Result<web_sys::WebSocket, Error> {
+    let ws = web_sys::WebSocket::new(ADDR);
+    log("WebSocket created");
+    let (func_sender,func_fut) = r#continue::continuation::<Result<(), Error>>();
+    let func_sender = OneShot::new(func_sender);
+    match ws {
+        Ok(ws) => {
+            ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+            let move_func_sender = func_sender.clone();
+            let onopen_callback = Closure::wrap(Box::new(move |_event: web_sys::Event| {
+                web_sys::console::log_1(&"WebSocket opened!".into());
+                move_func_sender.send_if_needed(Ok(()));
+            }) as Box<dyn FnMut(_)>);
+            ws.set_onopen(Some(onopen_callback.as_ref().unchecked_ref()));
+            onopen_callback.forget(); //leak the closure
+
+            let move_func_sender = func_sender.clone();
+            let onerror_callback = Closure::wrap(Box::new(move |event: web_sys::ErrorEvent| {
+                // .message seems problematic in some cases?
+                let error_description = event.type_();
+                let error_msg = format!("Websocket error: {}", error_description);
+                web_sys::console::log_1(&error_msg.into());
+                move_func_sender.send_if_needed(Err(Error::CantConnect(error_description)));
+            }) as Box<dyn FnMut(_)>);
+            ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
+            onerror_callback.forget(); //leak the closure
+
+            let onclose_callback = Closure::wrap(Box::new(move |_event: web_sys::CloseEvent| {
+                web_sys::console::log_1(&"WebSocket closed!".into());
+                SEND_WORKER_MESSAGE.get().as_ref().map(|sender| {
+                    sender.send(WorkerMessage::SocketClosed(SocketClosedMessage));
+                });
+            }) as Box<dyn FnMut(_)>);
+            ws.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
+            onclose_callback.forget(); //leak the closure
+            let onmessage_callback = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
+                if let Ok(abuf) = event.data().dyn_into::<web_sys::js_sys::ArrayBuffer>() {
+                    let u8_array = web_sys::js_sys::Uint8Array::new(&abuf);
+                    let mut vec = vec![0; u8_array.length() as usize];
+                    u8_array.copy_to(&mut vec[..]);
+                    read_send.send(vec).unwrap();
+                }
+                else {
+                    let str = format!("Received non-binary message: {:?}", event.data());
+                    web_sys::console::log_1(&str.into());
+                    unimplemented!("This is not currently supported");
+                }
+                return;
+            }) as Box<dyn FnMut(_)>);
+            ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
+            onmessage_callback.forget(); //leak the closure
+
+            //set up an async task to read from the stream / send to the websocket
+            let move_socket = ws.clone();
+            patch_close();
+            wasm_bindgen_futures::spawn_local(async move {
+                loop {
+                    let msg: Option<Vec<u8>> = write_recv.receive().await;
+                    // web_sys::console::log_1(&"WebSocketAdapter: will send data".into());
+                    if msg.is_none() {
+                        web_sys::console::log_1(&"WebSocketAdapter: send_recv closed".into());
+                        break;
+                    }
+                    let msg = msg.unwrap();
+                    //can't use send_with_u8_array, see https://github.com/wasm-bindgen/wasm-bindgen/issues/4101
+                    let msg = web_sys::js_sys::Uint8Array::from(msg.as_slice());
+                    let msg = msg.buffer();
+                    let op = move_socket.send_with_array_buffer(&msg);
+                    match op {
+                        Ok(_) => {
+                            // web_sys::console::log_1(&format!("WebSocketAdapter: sent {} bytes", len).into());
+                        }
+                        Err(e) => {
+                            web_sys::console::error_1(&format!("WebSocketAdapter: failed to send data: {:?}", e).into());
+                            break;
+                        }
+                    }
+                }
+            });
+            let f = func_fut.await;
+            f.map(|_| ws)
+
+        }
+        Err(e) => {
+            Err(Error::CantConnect(e.as_string().unwrap_or_else(|| "Unknown error".to_string())))
+        }
+    }
+
 }
 
 pub async fn adapter() -> Result<(WriteAdapter, ReadApapter), Error> {
     //put ws communication on its own thread
-    let (c,f) = r#continue::continuation();
-    let (read_send,read_recv) = std::sync::mpsc::channel();
-    let (send_send,send_recv) = continue_stream::continuation();
-
-    crate::sys::thread::Builder::new()
-        .name("exfiltrate::WebsocketAdapter".to_owned())
-        .spawn(move || {
-            log("thread started");
-            let ws = web_sys::WebSocket::new(ADDR);
-            log("WebSocket created");
-            let c = OneShot::new(c);
-            match ws {
-                Ok(ws) => {
-                    ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
-                    let move_c = c.clone();
-                    let onopen_callback = Closure::wrap(Box::new(move |event: web_sys::Event| {
-                        web_sys::console::log_1(&"WebSocket opened!".into());
-                        move_c.send_if_needed(Ok(()));
-                    }) as Box<dyn FnMut(_)>);
-                    ws.set_onopen(Some(onopen_callback.as_ref().unchecked_ref()));
-                    onopen_callback.forget(); //leak the closure
-
-                    let move_c = c.clone();
-                    let onerror_callback = Closure::wrap(Box::new(move |event: web_sys::ErrorEvent| {
-                        // .message seems problematic in some cases?
-                        let error_description = event.type_();
-                        let error_msg = format!("Websocket error: {}", error_description);
-                        web_sys::console::log_1(&error_msg.into());
-                        move_c.send_if_needed(Err(Error::CantConnect(error_description)));
-                    }) as Box<dyn FnMut(_)>);
-                    ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
-                    onerror_callback.forget(); //leak the closure
-
-                    let onclose_callback = Closure::wrap(Box::new(move |event: web_sys::CloseEvent| {
-                        web_sys::console::log_1(&"WebSocket closed!".into());
-                    }) as Box<dyn FnMut(_)>);
-                    ws.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
-                    onclose_callback.forget(); //leak the closure
-                    let onmessage_callback = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
-                        if let Ok(abuf) = event.data().dyn_into::<web_sys::js_sys::ArrayBuffer>() {
-                            let u8_array = web_sys::js_sys::Uint8Array::new(&abuf);
-                            let mut vec = vec![0; u8_array.length() as usize];
-                            u8_array.copy_to(&mut vec[..]);
-                            read_send.send(vec);
-                        }
-                        else {
-                            let str = format!("Received non-binary message: {:?}", event.data());
-                            web_sys::console::log_1(&str.into());
-                            todo!()
-                        }
-                        return;
-                    }) as Box<dyn FnMut(_)>);
-                    ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
-                    onmessage_callback.forget(); //leak the closure
-
-                    //set up an async task to read from the stream
-                    wasm_bindgen_futures::spawn_local(async move {
-                        loop {
-                            let msg: Option<Vec<u8>> = send_recv.receive().await;
-                            // web_sys::console::log_1(&"WebSocketAdapter: will send data".into());
-                            if msg.is_none() {
-                                web_sys::console::log_1(&"WebSocketAdapter: send_recv closed".into());
-                                break;
-                            }
-                            let msg = msg.unwrap();
-                            //can't use send_with_u8_array, see https://github.com/wasm-bindgen/wasm-bindgen/issues/4101
-                            let len = msg.len();
-                            let msg = web_sys::js_sys::Uint8Array::from(msg.as_slice());
-                            let msg = msg.buffer();
-                            let op = ws.send_with_array_buffer(&msg);
-                            match op {
-                                Ok(_) => {
-                                    // web_sys::console::log_1(&format!("WebSocketAdapter: sent {} bytes", len).into());
-                                }
-                                Err(e) => {
-                                    web_sys::console::error_1(&format!("WebSocketAdapter: failed to send data: {:?}", e).into());
-                                    break;
-                                }
-                            }
-                        }
-                    });
-
-
-                }
-                Err(e) => {
-                    c.send_if_needed(Err(Error::CantConnect(e.as_string().unwrap_or_else(|| "Unknown error".to_string()))));
-                }
-            }
-            patch_close();
-
-        }).unwrap();
-
-    match f.await {
-        Ok(_) => {
-            log("WebsocketAdapter created successfully");
-            Ok((WriteAdapter { send: send_send }, ReadApapter { recv: read_recv }))
+    //one thread only per process!
+    SEND_WORKER_MESSAGE.try_get_or_init(move || {
+        let (c,r) = continue_stream::continuation();
+        crate::sys::thread::Builder::new()
+            .name("exfiltrate::WebsocketAdapterWorker".to_owned())
+            .spawn(|| {
+                patch_close();
+                wasm_bindgen_futures::spawn_local(worker_thread(r))
+            })
+            .expect("Failed to spawn WebsocketAdapter worker thread");
+        Some(c)
+    });
+    match SEND_WORKER_MESSAGE.get().as_ref() {
+        Some(sender) => {
+            let (func_send, func_recv) = r#continue::continuation::<Result<(WriteAdapter, ReadApapter), Error>>();
+            //send a reconnect message to the worker thread
+            sender.send(WorkerMessage::Reconnect(ReconnectMessage{
+                func_sender: func_send,
+            }));
+            func_recv.await
         }
-        Err(e) => {
-            log(&format!("WebsocketAdapter creation failed: {:?}", e));
-            Err(e)
+        None => {
+            log("WebsocketAdapter: worker thread not initialized");
+            Err(Error::CantConnect("Worker thread not initialized".to_string()))
         }
     }
 }
@@ -194,15 +278,23 @@ impl WriteTransport for WriteAdapter {
 }
 impl ReadTransport for ReadApapter {
     fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, crate::bidirectional_proxy::Error> {
+        //copy from self.buf first
+        if !self.buf.is_empty() {
+            let copy_bytes = std::cmp::min(self.buf.len(), buf.len());
+            buf[..copy_bytes].copy_from_slice(&self.buf[..copy_bytes]);
+            self.buf.drain(..copy_bytes);
+            return Ok(copy_bytes);
+        }
         match self.recv.try_recv() {
             Ok(data) => {
-                if data.len() > buf.len() {
-                    log("WebsocketAdapter::read_nonblock: buffer too small");
-                    todo!()
-                } else {
-                    buf[..data.len()].copy_from_slice(&data);
-                    Ok(data.len())
+                //copy the first part into buf
+                let copy_bytes = std::cmp::min(data.len(), buf.len());
+                buf[..copy_bytes].copy_from_slice(&data[..copy_bytes]);
+                //if there are more bytes, put them in self.buf
+                if data.len() > copy_bytes {
+                    self.buf.extend_from_slice(&data[copy_bytes..]);
                 }
+                Ok(copy_bytes)
             }
             Err(_) => Ok(0)
         }
