@@ -205,14 +205,58 @@ impl WebsocketReadStream {
     }
 }
 
+/// Read transport that can handle either WebSocket or plain TCP stream connections.
+///
+/// This enum provides a unified interface for reading data from either WebSocket
+/// connections (which require frame parsing) or plain TCP streams.
+///
+/// # Example
+/// ```
+/// # #[cfg(feature = "transit")]
+/// # {
+/// use std::net::TcpStream;
+/// use exfiltrate::transit::http::ReadWebSocketOrStream;
+///
+/// // Create from a plain TCP stream
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let stream = TcpStream::connect("127.0.0.1:1984")?;
+/// let reader = ReadWebSocketOrStream::Stream(stream);
+/// # Ok(())
+/// # }
+/// # }
+/// ```
 #[derive(Debug)]
 pub enum ReadWebSocketOrStream {
+    /// WebSocket connection requiring frame parsing
     WebSocket(WebsocketReadStream),
+    /// Plain TCP stream connection
     Stream(TcpStream),
 }
+/// Write transport that can handle either WebSocket or plain TCP stream connections.
+///
+/// This enum provides a unified interface for writing data to either WebSocket
+/// connections (which require frame encoding) or plain TCP streams.
+///
+/// # Example
+/// ```
+/// # #[cfg(feature = "transit")]
+/// # {
+/// use std::net::TcpStream;
+/// use exfiltrate::transit::http::WriteWebSocketOrStream;
+///
+/// // Create from a plain TCP stream
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let stream = TcpStream::connect("127.0.0.1:1984")?;
+/// let writer = WriteWebSocketOrStream::Stream(stream);
+/// # Ok(())
+/// # }
+/// # }
+/// ```
 #[derive(Debug)]
 pub enum WriteWebSocketOrStream {
+    /// WebSocket connection requiring frame encoding
     WebSocket(WebsocketWriteStream),
+    /// Plain TCP stream connection
     Stream(TcpStream),
 }
 impl WriteTransport for WriteWebSocketOrStream {
@@ -315,9 +359,38 @@ impl WebsocketReadStream {
 
 
 
+/// HTTP server for the transit proxy system.
+///
+/// This server provides multiple communication protocols for clients:
+/// - HTTP POST for request/response communication
+/// - Server-Sent Events (SSE) for server-to-client notifications
+/// - WebSocket for bidirectional communication
+///
+/// The server automatically detects the protocol based on HTTP headers
+/// and upgrades connections as needed.
+///
+/// # Example
+/// ```
+/// # #[cfg(feature = "transit")]
+/// # {
+/// use exfiltrate::transit::{transit_proxy::TransitProxy, http::Server};
+///
+/// // Start server on localhost port 1984
+/// let proxy = TransitProxy::new();
+/// let server = Server::new("127.0.0.1:1984", proxy);
+/// 
+/// // Server runs in background thread
+/// // Keep the main thread alive
+/// # // In real usage: std::thread::park();
+/// # }
+/// ```
 pub struct Server {
 }
 
+/// Queue for sending Server-Sent Events (SSE) messages to connected clients.
+///
+/// This struct manages the SSE protocol formatting and ensures messages
+/// are properly formatted with the "data: " prefix and appropriate line endings.
 pub struct MessageQueue {
     stream: TcpStream,
 }
@@ -465,6 +538,31 @@ impl Session {
 }
 
 impl Server {
+    /// Creates a new HTTP server for the transit proxy.
+    ///
+    /// This method starts a TCP listener on the specified address and spawns
+    /// a background thread to handle incoming connections. Each connection is
+    /// handled in its own thread.
+    ///
+    /// # Arguments
+    ///
+    /// * `addr` - The socket address to bind to (e.g., "127.0.0.1:1984")
+    /// * `proxy` - The transit proxy that will handle message routing
+    ///
+    /// # Example
+    /// ```
+    /// # #[cfg(feature = "transit")]
+    /// # {
+    /// use exfiltrate::transit::{transit_proxy::TransitProxy, http::Server};
+    ///
+    /// let proxy = TransitProxy::new();
+    /// let server = Server::new("127.0.0.1:1984", proxy);
+    /// # }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the server cannot bind to the specified address.
     pub fn new<A: ToSocketAddrs>(addr: A, proxy: TransitProxy) -> Self {
         //listen on a tcp socket
         eprintln!("http: starting MCP server on {}", addr.to_socket_addrs().unwrap().next().unwrap());

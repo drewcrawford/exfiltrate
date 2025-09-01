@@ -1,3 +1,32 @@
+//! WebSocket adapter for WebAssembly targets.
+//!
+//! This module provides WebSocket-based transport adapters for the internal proxy
+//! when running on WebAssembly platforms. It creates a bridge between the WebSocket
+//! API available in web browsers and the transport traits used by the bidirectional
+//! proxy system.
+//!
+//! # Architecture
+//!
+//! The adapter uses a dedicated worker thread to manage WebSocket connections and
+//! handle asynchronous WebSocket events. Communication between the main thread and
+//! the worker thread is handled through channels.
+//!
+//! # Components
+//!
+//! - [`WriteAdapter`]: Implements `WriteTransport` for sending data through WebSocket
+//! - [`ReadAdapter`]: Implements `ReadTransport` for receiving data from WebSocket
+//! - [`adapter()`]: Main entry point that creates a WebSocket connection and returns
+//!   the read/write adapter pair
+//!
+//! # Thread Model
+//!
+//! The adapter spawns a single worker thread per process that manages all WebSocket
+//! connections. This thread handles:
+//! - WebSocket connection establishment
+//! - Message routing between WebSocket and the bidirectional proxy
+//! - Reconnection logic
+//! - Socket lifecycle management
+
 #![cfg(target_arch = "wasm32")]
 
 use std::fmt::Display;
@@ -9,8 +38,29 @@ use wasm_bindgen::closure::Closure;
 use crate::bidirectional_proxy::{ReadTransport, WriteTransport};
 use crate::once_nonlock::OnceNonLock;
 
+/// Error types for WebSocket adapter operations.
+///
+/// # Examples
+///
+/// ```ignore
+/// // ALLOW_IGNORE_DOCTEST: websocket_adapter is in a private module
+/// # #[cfg(target_arch = "wasm32")]
+/// # {
+/// use crate::internal_proxy::websocket_adapter::Error;
+///
+/// let error = Error::CantConnect("Connection refused".to_string());
+/// match error {
+///     Error::CantConnect(msg) => {
+///         println!("Failed to connect: {}", msg);
+///     }
+/// }
+/// # }
+/// ```
 #[derive(Debug)]
 pub enum Error {
+    /// Failed to establish a WebSocket connection.
+    /// 
+    /// Contains a description of the connection failure.
     #[allow(dead_code)]
     CantConnect(String),
 }
@@ -23,17 +73,27 @@ impl Display for Error {
     }
 }
 
+/// A one-shot sender that can only send a value once.
+///
+/// This is used for sending completion signals from WebSocket
+/// event handlers back to the async context. It ensures that
+/// only the first event (either success or error) is processed.
 struct OneShot<T> {
     c: Arc<Mutex<Option<r#continue::Sender<T>>>>,
 }
 
 impl<T> OneShot<T> {
+    /// Creates a new one-shot sender.
     fn new(sender: r#continue::Sender<T>) -> Self {
         OneShot {
             c: Arc::new(Mutex::new(Some(sender))),
         }
     }
 
+    /// Sends a value if not already sent.
+    ///
+    /// This method is idempotent - subsequent calls after the first
+    /// successful send will be no-ops.
     fn send_if_needed(&self, value: T) {
         if let Some(sender) = self.c.lock().unwrap().take() {
             sender.send(value);
@@ -49,31 +109,114 @@ impl<T> Clone for OneShot<T> {
     }
 }
 
+/// The WebSocket endpoint address.
+///
+/// This is the address the adapter connects to when establishing
+/// a WebSocket connection on WebAssembly platforms.
 const ADDR: &str = "ws://localhost:1984";
 
+/// Write adapter for sending data through a WebSocket connection.
+///
+/// This adapter implements the `WriteTransport` trait, allowing the
+/// bidirectional proxy to send data through a WebSocket connection.
+/// Data is sent asynchronously through a channel to the worker thread
+/// which handles the actual WebSocket transmission.
+///
+/// # Examples
+///
+/// ```ignore
+/// // ALLOW_IGNORE_DOCTEST: WebAssembly-specific code not testable in regular doctests
+/// # #[cfg(target_arch = "wasm32")]
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// use exfiltrate::internal_proxy::websocket_adapter;
+/// use exfiltrate::bidirectional_proxy::WriteTransport;
+///
+/// // Create a WebSocket adapter pair
+/// let (mut write_adapter, _read_adapter) = websocket_adapter::adapter().await?;
+/// 
+/// // Send data through the WebSocket
+/// write_adapter.write(b"Hello, WebSocket!")?;
+/// write_adapter.flush()?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct WriteAdapter {
     send: continue_stream::Sender<Vec<u8>>,
 }
+
+/// Read adapter for receiving data from a WebSocket connection.
+///
+/// This adapter implements the `ReadTransport` trait, allowing the
+/// bidirectional proxy to receive data from a WebSocket connection.
+/// It includes an internal buffer to handle partial reads and ensure
+/// efficient data transfer.
+///
+/// Note: The type name has a typo ("Apapter" instead of "Adapter")
+/// but is kept for backward compatibility.
+///
+/// # Examples
+///
+/// ```ignore
+/// // ALLOW_IGNORE_DOCTEST: WebAssembly-specific code not testable in regular doctests
+/// # #[cfg(target_arch = "wasm32")]
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// use exfiltrate::internal_proxy::websocket_adapter;
+/// use exfiltrate::bidirectional_proxy::ReadTransport;
+///
+/// // Create a WebSocket adapter pair
+/// let (_write_adapter, mut read_adapter) = websocket_adapter::adapter().await?;
+/// 
+/// // Read data from the WebSocket (non-blocking)
+/// let mut buffer = [0u8; 1024];
+/// match read_adapter.read_nonblock(&mut buffer)? {
+///     0 => println!("No data available"),
+///     n => println!("Read {} bytes", n),
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct ReadApapter {
     recv: std::sync::mpsc::Receiver<Vec<u8>>,
     buf: Vec<u8>,
 }
 
+/// Global channel for sending messages to the WebSocket worker thread.
+///
+/// This static ensures that only one worker thread is created per process,
+/// and provides a way to communicate with that thread.
 static SEND_WORKER_MESSAGE: OnceNonLock<continue_stream::Sender<WorkerMessage>> = OnceNonLock::new();
 
 
+/// Message requesting a WebSocket reconnection.
+///
+/// Contains a channel to send back the result of the connection attempt.
 struct ReconnectMessage{
     func_sender: r#continue::Sender<Result<(WriteAdapter, ReadApapter), Error>>,
 }
+
+/// Message indicating that a WebSocket has been closed.
 struct SocketClosedMessage;
 
+/// Messages that can be sent to the WebSocket worker thread.
 enum WorkerMessage {
+    /// Request to establish or re-establish a WebSocket connection.
     Reconnect(ReconnectMessage),
+    /// Notification that the current WebSocket has been closed.
     SocketClosed(SocketClosedMessage),
 }
 
+/// Main worker thread function that manages WebSocket connections.
+///
+/// This function runs in a dedicated thread and:
+/// - Handles connection requests
+/// - Manages the WebSocket lifecycle
+/// - Routes messages between the WebSocket and the proxy system
+///
+/// # Arguments
+///
+/// * `receiver` - Channel for receiving control messages
 async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
     log("thread started");
 
@@ -130,6 +273,23 @@ async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
     }
 }
 
+/// Creates and configures a WebSocket connection.
+///
+/// This function:
+/// 1. Creates a new WebSocket instance
+/// 2. Sets up event handlers for open, error, close, and message events
+/// 3. Spawns a task to handle outgoing messages
+/// 4. Waits for the connection to be established
+///
+/// # Arguments
+///
+/// * `read_send` - Channel for sending received data to the read adapter
+/// * `write_recv` - Channel for receiving data to send from the write adapter
+///
+/// # Returns
+///
+/// * `Ok(WebSocket)` - If the connection was successfully established
+/// * `Err(Error)` - If the connection failed
 async fn create_web_socket(read_send: std::sync::mpsc::Sender<Vec<u8>>, write_recv: continue_stream::Receiver<Vec<u8>>) -> Result<web_sys::WebSocket, Error> {
     let ws = web_sys::WebSocket::new(ADDR);
     log("WebSocket created");
@@ -220,6 +380,51 @@ async fn create_web_socket(read_send: std::sync::mpsc::Sender<Vec<u8>>, write_re
 
 }
 
+/// Creates a WebSocket adapter pair for bidirectional communication.
+///
+/// This function is the main entry point for establishing a WebSocket connection
+/// on WebAssembly platforms. It:
+/// 1. Ensures a worker thread is running (creates one if needed)
+/// 2. Sends a reconnection request to the worker thread
+/// 3. Waits for the connection to be established
+/// 4. Returns a pair of adapters for reading and writing
+///
+/// # Returns
+///
+/// * `Ok((WriteAdapter, ReadApapter))` - A pair of adapters for bidirectional communication
+/// * `Err(Error)` - If the connection could not be established
+///
+/// # Thread Safety
+///
+/// This function automatically manages a single worker thread per process.
+/// Multiple calls to this function will share the same worker thread but
+/// create separate WebSocket connections.
+///
+/// # Example
+///
+/// ```ignore
+/// // ALLOW_IGNORE_DOCTEST: This is WebAssembly-specific code not testable in regular doctests
+/// # #[cfg(target_arch = "wasm32")]
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// use exfiltrate::internal_proxy::websocket_adapter;
+/// use exfiltrate::bidirectional_proxy::BidirectionalProxy;
+///
+/// // Create WebSocket adapters
+/// let (write_adapter, read_adapter) = websocket_adapter::adapter().await?;
+/// 
+/// // Use with BidirectionalProxy
+/// let proxy = BidirectionalProxy::new(
+///     write_adapter, 
+///     read_adapter, 
+///     |msg| {
+///         // Process incoming messages
+///         println!("Received {} bytes", msg.len());
+///         None // No response
+///     }
+/// );
+/// # Ok(())
+/// # }
+/// ```
 pub async fn adapter() -> Result<(WriteAdapter, ReadApapter), Error> {
     //put ws communication on its own thread
     //one thread only per process!
@@ -250,6 +455,39 @@ pub async fn adapter() -> Result<(WriteAdapter, ReadApapter), Error> {
     }
 }
 
+/// Patches the global `close` function to prevent thread termination.
+///
+/// On WebAssembly platforms, calling `close()` would terminate the worker thread.
+/// This function replaces the global `close` function with a no-op to prevent
+/// accidental thread termination, which would break the WebSocket communication.
+///
+/// This is particularly important for web workers where the default `close()`
+/// behavior would terminate the worker context.
+///
+/// # Safety
+///
+/// This function modifies global JavaScript behavior and should only be called
+/// in WebAssembly worker contexts where thread preservation is critical.
+///
+/// # Panics
+///
+/// Panics if the global `close` function cannot be patched.
+///
+/// # Example
+///
+/// ```ignore
+/// // ALLOW_IGNORE_DOCTEST: WebAssembly-specific code not testable in regular doctests
+/// # #[cfg(target_arch = "wasm32")]
+/// # {
+/// use exfiltrate::internal_proxy::websocket_adapter;
+///
+/// // Call this in worker threads to prevent accidental termination
+/// websocket_adapter::patch_close();
+/// 
+/// // Now calling close() will not terminate the thread
+/// // (it will just log a message instead)
+/// # }
+/// ```
 pub fn patch_close() {
     //forbid thread exit
     let global = web_sys::js_sys::global();
@@ -265,18 +503,49 @@ pub fn patch_close() {
 
 
 impl WriteTransport for WriteAdapter {
+    /// Writes data to the WebSocket connection.
+    ///
+    /// The data is sent asynchronously through a channel to the worker thread,
+    /// which handles the actual WebSocket transmission.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The bytes to send through the WebSocket
+    ///
+    /// # Returns
+    ///
+    /// Always returns `Ok(())` as sending to the channel is non-blocking.
     fn write(&mut self, data: &[u8]) -> Result<(), crate::bidirectional_proxy::Error> {
         // web_sys::console::log_1(&format!("WebsocketAdapter::write_block: sending {} bytes", data.len()).into());
         self.send.send(data.to_vec());
         Ok(())
     }
 
+    /// Flushes any buffered data.
+    ///
+    /// For WebSocket connections, this is a no-op as data is sent immediately.
     fn flush(&mut self) -> Result<(), crate::bidirectional_proxy::Error> {
         //nothing to do!
         Ok(())
     }
 }
 impl ReadTransport for ReadApapter {
+    /// Performs a non-blocking read from the WebSocket connection.
+    ///
+    /// This method:
+    /// 1. First checks if there's buffered data from previous reads
+    /// 2. If not, attempts to receive new data from the WebSocket
+    /// 3. Copies available data to the provided buffer
+    /// 4. Stores any excess data in the internal buffer for future reads
+    ///
+    /// # Arguments
+    ///
+    /// * `buf` - The buffer to fill with received data
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(n)` - The number of bytes read (0 if no data available)
+    /// * `Err(_)` - If an error occurred (currently never returns errors)
     fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, crate::bidirectional_proxy::Error> {
         //copy from self.buf first
         if !self.buf.is_empty() {

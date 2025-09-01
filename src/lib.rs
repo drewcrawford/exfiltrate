@@ -1,4 +1,32 @@
+/*!
+An embeddable MCP server for writing custom tools to debug your program.
 
+exfiltrate provides a simple, self-contained and embeddable MCP server implementation that you can use
+to add custom tools to your program so that Claude Code can debug it at runtime.
+
+exfiltrate answers the question "how can I embed an MCP server in my program with custom tools so Claude Code can debug my program at runtime?
+
+It is also the answer to these less-frequently-asked questions:
+
+# Since many agents freeze the list of MCP tools on startup, how can I do workloads that heavily rely on starting/stopping my program?
+
+In theory, the MCP protocol allows you to push updates when tools change.  In practice, support for this is often unimplemented.
+
+But there's an elegant workaround: write a "tell me the latest tools" tool, and a "run another tool by name" tool, boom, dynamic tool discovery and use by all agents.  Tools that are built into the proxy persist whereas tools built into your program come and go.
+
+# Why does the official MCP SDK depend on tokio?
+
+Probably because that makes sense for internet-deployed MCP servers but it makes no sense for debugging an arbitrary program that doesn't even work which is why you're debugging it.
+
+This codebase has no dependency on tokio or the official SDK.  Instead it just uses threads.  Threads for everyone.
+
+# Ok, but I'm doing WASM.  How can I get an MCP server inside my WASM application?
+
+By proxying it of course.  Your browser opens a websocket to the proxy application which sends it to Claude.
+
+Since the async story is bad there too, I just wrote a ground-up WebSocket implementation with threads.  Threads for everyone.
+
+*/
 pub mod mcp;
 pub mod jrpc;
 pub mod messages;

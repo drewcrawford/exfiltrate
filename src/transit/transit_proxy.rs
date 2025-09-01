@@ -7,6 +7,10 @@ use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
 use crate::transit::http::{ReadWebSocketOrStream, WriteWebSocketOrStream};
 use crate::transit::log_proxy::LogProxy;
 
+/// Represents an accepted connection to the transit proxy.
+///
+/// This struct encapsulates a bidirectional communication channel
+/// and the address information of the connected peer.
 #[derive(Debug)]
 pub struct Accept {
     bidirectional: crate::bidirectional_proxy::BidirectionalProxy,
@@ -14,6 +18,12 @@ pub struct Accept {
 }
 
 impl Accept {
+    /// Creates a new accepted connection.
+    ///
+    /// # Arguments
+    ///
+    /// * `bidirectional` - The bidirectional proxy for message communication
+    /// * `addr` - String representation of the peer's address
     pub fn new(bidirectional: crate::bidirectional_proxy::BidirectionalProxy, addr: String) -> Self {
         Accept {
             bidirectional,
@@ -23,11 +33,38 @@ impl Accept {
 }
 
 
+/// Thread-safe container for managing accepted connections and notification handling.
+///
+/// This struct is shared across threads to coordinate connection state
+/// and notification processing.
 pub struct SharedAccept {
     latest_accept: Option<Accept>,
     process_notifications: Box<dyn Fn(crate::jrpc::Notification) + Send + Sync>,
 }
 
+/// Core proxy component that manages connections and routes JSON-RPC messages.
+///
+/// The `TransitProxy` acts as an intermediary between clients and target applications,
+/// intercepting and potentially modifying JSON-RPC communication. It provides:
+///
+/// - Connection management for both TCP and WebSocket protocols
+/// - Message routing between clients and targets
+/// - Tool injection to augment target capabilities
+/// - Fallback handling when no target is connected
+///
+/// # Example
+/// ```
+/// # #[cfg(feature = "transit")]
+/// # {
+/// use exfiltrate::transit::transit_proxy::TransitProxy;
+///
+/// // Create a new transit proxy
+/// let mut proxy = TransitProxy::new();
+///
+/// // The proxy listens on 127.0.0.1:1985 for internal connections
+/// // It can handle JSON-RPC requests even without a target connection
+/// # }
+/// ```
 pub struct TransitProxy {
     shared_accept: Arc<Mutex<SharedAccept>>,
     message_receiver: std::sync::mpsc::Receiver<crate::jrpc::Response<serde_json::Value>>,
@@ -35,12 +72,16 @@ pub struct TransitProxy {
 
 }
 
+/// Errors that can occur during transit proxy operations.
 #[derive(Debug,thiserror::Error)]
 pub enum Error {
+    /// No target application is currently connected to the proxy
     #[error("Not connected to the exfiltrated application")]
     NotConnected,
+    /// Failed to send message through the bidirectional proxy
     #[error("Failed to send message: {0}")]
     TransitError(#[from] crate::bidirectional_proxy::Error),
+    /// Failed to parse JSON-RPC message
     #[error("Failed to parse message: {0}")]
     JRPCError(#[from] crate::jrpc::Error),
 }
@@ -72,6 +113,22 @@ fn bidi_fn(message_sender: &std::sync::mpsc::Sender<crate::jrpc::Response<serde_
 }
 
 impl TransitProxy {
+    /// Creates a new transit proxy instance.
+    ///
+    /// This starts a TCP listener on `127.0.0.1:1985` that waits for
+    /// internal proxy connections. The proxy runs in a background thread
+    /// and can handle both TCP and WebSocket connections.
+    ///
+    /// # Example
+    /// ```
+    /// # #[cfg(feature = "transit")]
+    /// # {
+    /// use exfiltrate::transit::transit_proxy::TransitProxy;
+    ///
+    /// let proxy = TransitProxy::new();
+    /// // Proxy is now listening on 127.0.0.1:1985
+    /// # }
+    /// ```
     pub fn new(
 
     ) -> Self {
@@ -106,6 +163,15 @@ impl TransitProxy {
         }
     }
 
+    /// Binds a notification handler to process incoming notifications.
+    ///
+    /// The handler will be called for each notification received from
+    /// the target application, except for special notifications that
+    /// are handled internally (like logwise records).
+    ///
+    /// # Arguments
+    ///
+    /// * `process_notifications` - Function to handle notifications
     pub(crate) fn bind<F>(&self, process_notifications: F)
     where
         F: Fn(crate::jrpc::Notification) + Send + Sync + 'static,
@@ -114,6 +180,14 @@ impl TransitProxy {
         shared.process_notifications = Box::new(process_notifications);
     }
 
+    /// Changes the current accepted connection.
+    ///
+    /// This is used internally to upgrade connections from TCP to WebSocket
+    /// or to replace the current connection with a new one.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_accept` - Optional tuple of write and read transports
     pub(crate) fn change_accept(&self, new_accept: Option<(WriteWebSocketOrStream, ReadWebSocketOrStream)>) {
 
         let bidi = match new_accept {
@@ -136,6 +210,21 @@ impl TransitProxy {
 }
 
 impl TransitProxy {
+    /// Processes incoming data from a client.
+    ///
+    /// Parses the data as either a JSON-RPC request or notification.
+    /// Requests are forwarded to the target (if connected) or handled
+    /// locally for certain methods. Returns a response for requests,
+    /// or `None` for notifications.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Raw bytes containing JSON-RPC message
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Response)` for requests
+    /// * `None` for notifications
     pub fn received_data(&mut self, data: &[u8]) -> Option<Response<serde_json::Value>> {
         let parse_request: Result<Request,_> = serde_json::from_slice(&data);
         match parse_request {
@@ -165,6 +254,23 @@ impl TransitProxy {
             }
         }
     }
+    /// Sends a JSON-RPC request to the target application.
+    ///
+    /// Some requests are handled locally (like "initialize"), while others
+    /// are forwarded to the connected target. If no target is connected,
+    /// falls back to local handling for supported methods.
+    ///
+    /// This method also handles tool injection, adding proxy-only tools
+    /// to the responses from the target.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The JSON-RPC request to send
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Response)` on success
+    /// * `Err(Error)` if sending fails or no target is connected
     pub fn send_request(&mut self, message: crate::jrpc::Request) -> Result<crate::jrpc::Response<serde_json::Value>,Error> {
         // some things we do locally always
         match message.method.as_str() {
@@ -311,6 +417,15 @@ impl TransitProxy {
         }
     }
 
+    /// Sends a JSON-RPC notification to the target application.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The notification to send
+    ///
+    /// # Note
+    ///
+    /// This method is not yet implemented.
     pub fn send_notification(&mut self, _message: crate::jrpc::Notification) {
         todo!();
     }
