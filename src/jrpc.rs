@@ -70,7 +70,7 @@
 //!     "log".to_string(),
 //!     Some(json!({"level": "info", "message": "System started"}))
 //! );
-//! 
+//!
 //! // Notifications can be serialized and sent without expecting a response
 //! let serialized = serde_json::to_string(&notification).unwrap();
 //! assert!(serialized.contains("\"method\":\"log\""));
@@ -145,8 +145,8 @@
 //! assert_eq!(response.error.unwrap().code, -32601);
 //! ```
 
-use std::fmt::{Display, Formatter};
 use serde::Serialize;
+use std::fmt::{Display, Formatter};
 
 /// A JSON-RPC 2.0 request.
 ///
@@ -223,7 +223,7 @@ use serde::Serialize;
 /// assert_eq!(deserialized.method, "ping");
 /// assert_eq!(deserialized.id, json!(99));
 /// ```
-#[derive(serde::Deserialize,serde::Serialize,Debug,Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Request {
     /// The JSON-RPC protocol version (must be "2.0")
     pub jsonrpc: String,
@@ -304,7 +304,7 @@ impl Request {
 /// // Create a notification without parameters
 /// let heartbeat = Notification::new("heartbeat".to_string(), None);
 /// ```
-#[derive(serde::Deserialize,serde::Serialize, Debug)]
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct Notification {
     /// The JSON-RPC protocol version (must be "2.0")
     pub jsonrpc: String,
@@ -402,7 +402,7 @@ impl Notification {
 /// use serde_json::json;
 ///
 /// let response = Response::new(json!(["item1", "item2"]), json!(99));
-/// 
+///
 /// // Serialize to JSON
 /// let json_str = serde_json::to_string(&response).unwrap();
 /// assert!(json_str.contains("\"result\""));
@@ -417,7 +417,7 @@ impl Notification {
 /// let deserialized: Response<i32> = serde_json::from_str(json_str).unwrap();
 /// assert_eq!(deserialized.result, Some(19));
 /// ```
-#[derive(Debug, serde::Serialize,serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Response<R> {
     /// The JSON-RPC protocol version (must be "2.0")
     pub jsonrpc: String,
@@ -531,7 +531,10 @@ impl<R> Response<R> {
     /// assert!(erased_error.error.is_some());
     /// assert_eq!(erased_error.error.as_ref().unwrap().code, -32602);
     /// ```
-    pub fn erase(self) -> Response<serde_json::Value> where R: Serialize {
+    pub fn erase(self) -> Response<serde_json::Value>
+    where
+        R: Serialize,
+    {
         Response {
             jsonrpc: self.jsonrpc,
             result: self.result.map(|r| serde_json::to_value(r).unwrap()),
@@ -540,7 +543,6 @@ impl<R> Response<R> {
         }
     }
 }
-
 
 /// A JSON-RPC 2.0 error object.
 ///
@@ -576,7 +578,7 @@ impl<R> Response<R> {
 /// assert_eq!(detailed_error.code, -32602);
 /// assert!(detailed_error.data.is_some());
 /// ```
-#[derive(Debug, serde::Serialize,serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Error {
     /// Error code as defined in JSON-RPC 2.0 specification
     pub code: i32,
@@ -620,7 +622,11 @@ impl Error {
     /// assert_eq!(custom_error.code, -32050);
     /// ```
     pub fn new(code: i32, message: String, data: Option<serde_json::Value>) -> Self {
-        Self { code, message, data }
+        Self {
+            code,
+            message,
+            data,
+        }
     }
 
     /// Creates a "Parse error" (code -32700).

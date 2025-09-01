@@ -32,7 +32,7 @@
 //! # {
 //! // Start capturing logwise logs
 //! // exfiltrate::logwise::begin_capture();
-//! 
+//!
 //! // Example of what would be captured (using logwise directly)
 //! // logwise::info_sync!("This log would be captured", user="alice");
 //! # }
@@ -43,15 +43,15 @@
 //!
 //! ```
 //! # fn main() {
-//! # #[cfg(feature = "logwise")] 
+//! # #[cfg(feature = "logwise")]
 //! # {
 //! #[derive(Debug)]
-//! struct ComplexData { 
-//!     value: i32 
+//! struct ComplexData {
+//!     value: i32
 //! }
-//! 
+//!
 //! let data = ComplexData { value: 42 };
-//! 
+//!
 //! // Complex types need to be wrapped with LogIt for privacy control
 //! // This demonstrates the syntax, though actual capture requires begin_capture()
 //! // logwise::info_sync!(
@@ -70,12 +70,12 @@
 //! - Sensitive data should use appropriate logwise privacy wrappers
 //! - The forwarding respects logwise's privacy settings and redaction rules
 
+use crate::internal_proxy::InternalProxy;
+use crate::jrpc::Notification;
+use logwise::{LogRecord, Logger};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use logwise::{LogRecord, Logger};
-use crate::internal_proxy::InternalProxy;
-use crate::jrpc::Notification;
 
 /// A logger implementation that forwards log records through the exfiltrate system.
 ///
@@ -89,9 +89,7 @@ use crate::jrpc::Notification;
 /// though both currently use the same underlying synchronous implementation
 /// for simplicity and consistency.
 #[derive(Debug)]
-struct ForwardingLogger {
-
-}
+struct ForwardingLogger {}
 
 impl Logger for ForwardingLogger {
     /// Processes a completed log record synchronously.
@@ -110,8 +108,11 @@ impl Logger for ForwardingLogger {
     ///
     /// Currently delegates to the synchronous implementation wrapped in an async block.
     /// This ensures consistent behavior between sync and async logging paths.
-    fn finish_log_record_async<'s>(&'s self, record: LogRecord) -> Pin<Box<dyn Future<Output=()> + Send + 's>> {
-        Box::pin(async move{self.finish_log_record(record)})
+    fn finish_log_record_async<'s>(
+        &'s self,
+        record: LogRecord,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 's>> {
+        Box::pin(async move { self.finish_log_record(record) })
     }
 
     /// Prepares the logger for shutdown.
@@ -135,12 +136,11 @@ impl ForwardingLogger {
     /// After installation, all logwise log records will be forwarded through
     /// the exfiltrate system.
     fn install() {
-        let n = Notification::new("exfiltrate/logwise/new".to_string(),None);
+        let n = Notification::new("exfiltrate/logwise/new".to_string(), None);
         InternalProxy::current().buffer_notification(n);
-        let f = ForwardingLogger{};
+        let f = ForwardingLogger {};
         logwise::add_global_logger(Arc::new(f));
     }
-
 }
 
 /// Begins capturing logwise log records for forwarding through exfiltrate.

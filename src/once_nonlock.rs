@@ -31,7 +31,7 @@ Prefer `std::sync::OnceLock` when:
 
 The implementation uses three atomic states to coordinate initialization:
 - `INITIAL` (0): The value has not been initialized yet
-- `IN_PROGRESS` (1): A thread is currently initializing the value  
+- `IN_PROGRESS` (1): A thread is currently initializing the value
 - `DONE` (2): The value has been successfully initialized
 
 # Thread Safety
@@ -55,17 +55,17 @@ use std::thread;
 #     use std::mem::ManuallyDrop;
 #     use std::sync::Arc;
 #     use std::sync::atomic::{AtomicU8, Ordering};
-#     
+#
 #     const ONCE_INITIAL: u8 = 0;
 #     const ONCE_IN_PROGRESS: u8 = 1;
 #     const ONCE_DONE: u8 = 2;
-#     
+#
 #     pub struct OnceNonLock<T> {
 #         once: AtomicU8,
 #         value: UnsafeCell<ManuallyDrop<Option<T>>>,
 #         _marker: std::marker::PhantomData<T>,
 #     }
-#     
+#
 #     impl<T> OnceNonLock<T> {
 #         pub const fn new() -> Self {
 #             OnceNonLock {
@@ -74,7 +74,7 @@ use std::thread;
 #                 _marker: std::marker::PhantomData,
 #             }
 #         }
-#         
+#
 #         pub fn try_get_or_init<F>(&self, f: F) -> Option<&T>
 #         where
 #             F: FnOnce() -> Option<T>,
@@ -105,7 +105,7 @@ use std::thread;
 #                 Err(_) => panic!("Invalid state"),
 #             }
 #         }
-#         
+#
 #         pub fn get(&self) -> Option<&T> {
 #             match self.once.load(Ordering::Acquire) {
 #                 ONCE_INITIAL => None,
@@ -119,10 +119,10 @@ use std::thread;
 #             }
 #         }
 #     }
-#     
+#
 #     unsafe impl<T: Send> Send for OnceNonLock<T> {}
 #     unsafe impl<T: Sync> Sync for OnceNonLock<T> {}
-#     
+#
 #     impl<T> Drop for OnceNonLock<T> {
 #         fn drop(&mut self) {
 #             match self.once.load(Ordering::Relaxed) {
@@ -161,17 +161,17 @@ use std::time::Duration;
 #     use std::mem::ManuallyDrop;
 #     use std::sync::Arc;
 #     use std::sync::atomic::{AtomicU8, Ordering};
-#     
+#
 #     const ONCE_INITIAL: u8 = 0;
 #     const ONCE_IN_PROGRESS: u8 = 1;
 #     const ONCE_DONE: u8 = 2;
-#     
+#
 #     pub struct OnceNonLock<T> {
 #         once: AtomicU8,
 #         value: UnsafeCell<ManuallyDrop<Option<T>>>,
 #         _marker: std::marker::PhantomData<T>,
 #     }
-#     
+#
 #     impl<T> OnceNonLock<T> {
 #         pub const fn new() -> Self {
 #             OnceNonLock {
@@ -180,7 +180,7 @@ use std::time::Duration;
 #                 _marker: std::marker::PhantomData,
 #             }
 #         }
-#         
+#
 #         pub fn try_get_or_init<F>(&self, f: F) -> Option<&T>
 #         where
 #             F: FnOnce() -> Option<T>,
@@ -211,7 +211,7 @@ use std::time::Duration;
 #                 Err(_) => panic!("Invalid state"),
 #             }
 #         }
-#         
+#
 #         pub fn get(&self) -> Option<&T> {
 #             match self.once.load(Ordering::Acquire) {
 #                 ONCE_INITIAL => None,
@@ -225,10 +225,10 @@ use std::time::Duration;
 #             }
 #         }
 #     }
-#     
+#
 #     unsafe impl<T: Send> Send for OnceNonLock<T> {}
 #     unsafe impl<T: Sync> Sync for OnceNonLock<T> {}
-#     
+#
 #     impl<T> Drop for OnceNonLock<T> {
 #         fn drop(&mut self) {
 #             match self.once.load(Ordering::Relaxed) {
@@ -276,17 +276,17 @@ assert_eq!(once.get().map(|s| s.as_str()), Some("slow init"));
 #     use std::mem::ManuallyDrop;
 #     use std::sync::Arc;
 #     use std::sync::atomic::{AtomicU8, Ordering};
-#     
+#
 #     const ONCE_INITIAL: u8 = 0;
 #     const ONCE_IN_PROGRESS: u8 = 1;
 #     const ONCE_DONE: u8 = 2;
-#     
+#
 #     pub struct OnceNonLock<T> {
 #         once: AtomicU8,
 #         value: UnsafeCell<ManuallyDrop<Option<T>>>,
 #         _marker: std::marker::PhantomData<T>,
 #     }
-#     
+#
 #     impl<T> OnceNonLock<T> {
 #         pub const fn new() -> Self {
 #             OnceNonLock {
@@ -295,7 +295,7 @@ assert_eq!(once.get().map(|s| s.as_str()), Some("slow init"));
 #                 _marker: std::marker::PhantomData,
 #             }
 #         }
-#         
+#
 #         pub fn try_get_or_init<F>(&self, f: F) -> Option<&T>
 #         where
 #             F: FnOnce() -> Option<T>,
@@ -327,7 +327,7 @@ assert_eq!(once.get().map(|s| s.as_str()), Some("slow init"));
 #             }
 #         }
 #     }
-#     
+#
 #     unsafe impl<T: Send> Send for OnceNonLock<T> {}
 #     unsafe impl<T: Sync> Sync for OnceNonLock<T> {}
 # }
@@ -421,10 +421,10 @@ impl<T> OnceNonLock<T> {
     /// #     unsafe impl<T: Sync> Sync for OnceNonLock<T> {}
     /// # }
     /// # use once_nonlock::OnceNonLock;
-    /// 
+    ///
     /// // Can be used in static contexts
     /// static GLOBAL: OnceNonLock<i32> = OnceNonLock::new();
-    /// 
+    ///
     /// // Or created at runtime
     /// let local = OnceNonLock::<String>::new();
     /// ```
@@ -494,12 +494,12 @@ impl<T> OnceNonLock<T> {
     /// #     }
     /// # }
     /// # use once_nonlock::OnceNonLock;
-    /// 
+    ///
     /// let once = OnceNonLock::new();
-    /// 
+    ///
     /// // Initialize with a value
     /// let result = once.try_get_or_init(|| Some(42));
-    /// 
+    ///
     /// // Subsequent calls return the same value without calling the closure
     /// let result2 = once.try_get_or_init(|| panic!("This won't be called"));
     /// ```
@@ -507,7 +507,12 @@ impl<T> OnceNonLock<T> {
     where
         F: FnOnce() -> Option<T>,
     {
-        match self.once.compare_exchange(ONCE_INITIAL, ONCE_IN_PROGRESS, Ordering::AcqRel, Ordering::Relaxed) {
+        match self.once.compare_exchange(
+            ONCE_INITIAL,
+            ONCE_IN_PROGRESS,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        ) {
             Ok(_) => {
                 // We are the first to call get_or_init, so we initialize the value
                 let value = f();
@@ -516,13 +521,10 @@ impl<T> OnceNonLock<T> {
                         // SAFETY: We have exclusive access to the value
                         *self.value.get() = ManuallyDrop::new(Some(value));
                         self.once.store(ONCE_DONE, Ordering::Release);
-
-                    }
-                    else {
+                    } else {
                         //go back to initial state if the value is None
                         self.once.store(ONCE_INITIAL, Ordering::Release);
                     }
-
                 }
                 unsafe {
                     // SAFETY: We have exclusive access to the value
@@ -575,20 +577,27 @@ impl<T> OnceNonLock<T> {
     /// ```ignore
     /// // ALLOW_IGNORE_DOCTEST: AsyncFnOnce is a nightly-only feature that cannot be used in stable doctests
     /// use std::sync::Arc;
-    /// 
+    ///
     /// let once = Arc::new(OnceNonLock::new());
-    /// 
+    ///
     /// // Initialize asynchronously
     /// once.init_async(async || {
     ///     // Perform async operations
     ///     Some("async value".to_string())
     /// }).await;
     /// ```
-    pub fn init_async<F>(self: &Arc<Self>, f: F) -> impl Future<Output=()> + use<F,T> where
-    F: AsyncFnOnce() -> Option<T> {
-        let  moveme = self.clone();
+    pub fn init_async<F>(self: &Arc<Self>, f: F) -> impl Future<Output = ()> + use<F, T>
+    where
+        F: AsyncFnOnce() -> Option<T>,
+    {
+        let moveme = self.clone();
         async move {
-            match moveme.once.compare_exchange(ONCE_INITIAL, ONCE_IN_PROGRESS, Ordering::AcqRel, Ordering::Relaxed) {
+            match moveme.once.compare_exchange(
+                ONCE_INITIAL,
+                ONCE_IN_PROGRESS,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => {
                     // We are the first to call get_or_init, so we initialize the value
                     let value = f().await;
@@ -598,18 +607,13 @@ impl<T> OnceNonLock<T> {
                             *moveme.value.get() = ManuallyDrop::new(Some(value));
                         }
                         moveme.once.store(ONCE_DONE, Ordering::Release);
-                    }
-                    else {
+                    } else {
                         //go back to initial state if the value is None
                         moveme.once.store(ONCE_INITIAL, Ordering::Release);
                     }
                 }
-                Err(ONCE_IN_PROGRESS) => {
-
-                }
-                Err(ONCE_DONE) => {
-
-                }
+                Err(ONCE_IN_PROGRESS) => {}
+                Err(ONCE_DONE) => {}
                 Err(other) => {
                     panic!("OnceNonLock: async init with value {:?}", other)
                 }
@@ -702,21 +706,21 @@ impl<T> OnceNonLock<T> {
     /// #     unsafe impl<T: Sync> Sync for OnceNonLock<T> {}
     /// # }
     /// # use once_nonlock::OnceNonLock;
-    /// 
+    ///
     /// let once = OnceNonLock::new();
-    /// 
+    ///
     /// // Before initialization, get() returns None
     /// assert_eq!(once.get(), None);
-    /// 
+    ///
     /// // Initialize the value
     /// once.try_get_or_init(|| Some(42));
-    /// 
+    ///
     /// // After initialization, get() returns the value
     /// assert_eq!(once.get(), Some(&42));
     /// ```
     pub fn get(&self) -> Option<&T> {
         match self.once.load(Ordering::Acquire) {
-            ONCE_INITIAL => None, // Value was never initialized
+            ONCE_INITIAL => None,     // Value was never initialized
             ONCE_IN_PROGRESS => None, // Value is still being initialized
             ONCE_DONE => unsafe {
                 // SAFETY: We have exclusive access to the value
@@ -728,7 +732,7 @@ impl<T> OnceNonLock<T> {
         }
     }
 }
-impl <T> Drop for OnceNonLock<T> {
+impl<T> Drop for OnceNonLock<T> {
     /// Drops the `OnceNonLock` and its contained value if initialized.
     ///
     /// # Panics
@@ -757,16 +761,15 @@ impl <T> Drop for OnceNonLock<T> {
             }
         }
     }
-
 }
 // SAFETY: OnceNonLock can be sent between threads if T can be sent.
 // The atomic state management ensures proper synchronization when the value
 // is transferred between threads.
-unsafe impl <T: Send> Send for OnceNonLock<T> {}
+unsafe impl<T: Send> Send for OnceNonLock<T> {}
 
 // SAFETY: OnceNonLock can be shared between threads if T can be shared.
 // The atomic operations and UnsafeCell usage ensure that:
 // - Only one thread can initialize the value (via compare_exchange)
 // - Once initialized, the value is immutable and can be safely shared
 // - Memory ordering (Acquire/Release) ensures proper visibility across threads
-unsafe impl <T: Sync> Sync for OnceNonLock<T> {}
+unsafe impl<T: Sync> Sync for OnceNonLock<T> {}

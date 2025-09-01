@@ -96,13 +96,13 @@
 //! exfiltrate::tools::add_tool(Box::new(CalculatorTool));
 //! ```
 
+use crate::internal_proxy::InternalProxy;
+use crate::jrpc::{Error, Notification, Request, Response};
+use serde::de::{MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{LazyLock, RwLock};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::{MapAccess, Visitor};
-use crate::internal_proxy::InternalProxy;
-use crate::jrpc::{Request, Error, Response, Notification};
 
 /// Trait for implementing MCP tools.
 ///
@@ -156,13 +156,13 @@ pub trait Tool: Send + Sync {
     ///
     /// This name is used to identify the tool in MCP requests.
     fn name(&self) -> &str;
-    
+
     /// Returns a human-readable description of what the tool does.
     ///
     /// This description is shown to users and AI agents to help them
     /// understand the tool's purpose.
     fn description(&self) -> &str;
-    
+
     /// Returns the schema defining the tool's input parameters.
     ///
     /// The schema specifies what parameters the tool accepts, their types,
@@ -179,12 +179,11 @@ pub trait Tool: Send + Sync {
     ///
     /// * `Ok(ToolCallResponse)` - Success response with tool output
     /// * `Err(ToolCallError)` - Error response if the tool execution fails
-    fn call(&self, params: HashMap<String, serde_json::Value>) -> Result<ToolCallResponse, ToolCallError>;
-
+    fn call(
+        &self,
+        params: HashMap<String, serde_json::Value>,
+    ) -> Result<ToolCallResponse, ToolCallError>;
 }
-
-
-
 
 /// Tools available in the target application.
 ///
@@ -196,11 +195,7 @@ pub trait Tool: Send + Sync {
 ///
 /// The collection is protected by a `RwLock` to allow concurrent reads and
 /// exclusive writes.
-pub static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| {
-    RwLock::new(vec![
-
-    ])
-});
+pub static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| RwLock::new(vec![]));
 
 /// Tools available in both proxy and target applications.
 ///
@@ -227,7 +222,7 @@ pub static SHARED_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
 /// let json = serde_json::to_string(&empty_list).unwrap();
 /// assert!(json.contains("\"tools\":[]"));
 /// ```
-#[derive(Debug, serde::Serialize,serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ToolList {
     /// The list of available tools with their metadata
     pub(crate) tools: Vec<ToolInfo>,
@@ -255,7 +250,7 @@ impl ToolList {
 ///
 /// Contains all the information needed for an agent to understand
 /// and invoke a tool.
-#[derive(Debug, serde::Serialize,serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ToolInfo {
     /// The unique name of the tool
     name: String,
@@ -304,7 +299,7 @@ impl ToolInfo {
 ///     ),
 /// ]);
 /// ```
-#[derive(Debug, serde::Serialize,serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct InputSchema {
     /// The schema type (always "object" for tool parameters)
     r#type: String,
@@ -410,11 +405,11 @@ impl InputSchema {
     ///     ),
     /// ]);
     /// ```
-    pub fn new<A: IntoIterator<Item=Argument>>(arguments: A) -> Self {
+    pub fn new<A: IntoIterator<Item = Argument>>(arguments: A) -> Self {
         let mut properties = HashMap::new();
         let mut required = Vec::new();
         for argument in arguments {
-            let mut inner_map: HashMap<String,serde_json::Value> = HashMap::new();
+            let mut inner_map: HashMap<String, serde_json::Value> = HashMap::new();
             inner_map.insert("type".to_string(), argument.r#type.into());
             inner_map.insert("description".to_string(), argument.description.into());
             if argument.required {
@@ -434,13 +429,16 @@ impl InputSchema {
 ///
 /// Combines tools from both [`TOOLS`] and [`SHARED_TOOLS`] collections.
 pub(crate) fn list_int() -> ToolList {
-    let tool_infos: Vec<ToolInfo> = TOOLS.read().unwrap().iter().chain(SHARED_TOOLS.iter()).map(|tool| ToolInfo::from_tool(tool.as_ref())).collect();
-    let tool_list = ToolList {
-        tools: tool_infos,
-    };
+    let tool_infos: Vec<ToolInfo> = TOOLS
+        .read()
+        .unwrap()
+        .iter()
+        .chain(SHARED_TOOLS.iter())
+        .map(|tool| ToolInfo::from_tool(tool.as_ref()))
+        .collect();
+    let tool_list = ToolList { tools: tool_infos };
     tool_list
 }
-
 
 /// Processes a `tools/list` request.
 ///
@@ -459,7 +457,6 @@ pub(crate) fn list_process(request: Request) -> Response<ToolList> {
     let response = Response::new(tool_list, request.id);
     response
 }
-
 
 /// Registers a new tool in the target application.
 ///
@@ -482,7 +479,7 @@ pub(crate) fn list_process(request: Request) -> Response<ToolList> {
 ///     fn name(&self) -> &str { "my_tool" }
 ///     fn description(&self) -> &str { "A custom tool" }
 ///     fn input_schema(&self) -> InputSchema { InputSchema::new(vec![]) }
-///     fn call(&self, _: HashMap<String, serde_json::Value>) 
+///     fn call(&self, _: HashMap<String, serde_json::Value>)
 ///         -> Result<ToolCallResponse, ToolCallError> {
 ///         Ok(ToolCallResponse::new(vec!["Success".into()]))
 ///     }
@@ -496,18 +493,17 @@ pub fn add_tool(tool: Box<dyn Tool>) {
     let n = Notification::new("notifications/tools/list_changed".to_string(), None);
     let r = InternalProxy::current().send_notification(n);
     match r {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(crate::internal_proxy::Error::NotConnected) => {
             //benign
         }
     }
-
 }
 
 /// Parameters for invoking a tool.
 ///
 /// Used internally to deserialize tool call requests.
-#[derive(Debug, serde::Deserialize,Clone)]
+#[derive(Debug, serde::Deserialize, Clone)]
 pub(crate) struct ToolCallParams {
     /// Name of the tool to invoke
     pub(crate) name: String,
@@ -518,9 +514,7 @@ pub(crate) struct ToolCallParams {
 impl ToolCallParams {
     /// Creates new tool call parameters.
     pub(crate) fn new(name: String, arguments: HashMap<String, serde_json::Value>) -> Self {
-        ToolCallParams {
-            name, arguments
-        }
+        ToolCallParams { name, arguments }
     }
 }
 
@@ -538,7 +532,7 @@ impl ToolCallParams {
 ///     "Result: 42".into(),
 /// ]);
 /// ```
-#[derive(Debug, serde::Serialize,serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ToolCallResponse {
     /// The content returned by the tool
     pub(crate) content: Vec<ToolContent>,
@@ -569,7 +563,6 @@ impl ToolCallResponse {
         }
     }
 }
-
 
 /// Error response from a failed tool invocation.
 ///
@@ -615,7 +608,7 @@ impl ToolCallError {
             is_error: true,
         }
     }
-    
+
     /// Converts this error into a ToolCallResponse.
     ///
     /// Used internally to unify error and success responses.
@@ -626,8 +619,6 @@ impl ToolCallError {
         }
     }
 }
-
-
 
 /// Content returned by a tool.
 ///
@@ -752,9 +743,11 @@ impl From<&str> for ToolContent {
 ///
 /// Looks up the tool by name and invokes it with the provided arguments.
 /// Searches both [`TOOLS`] and [`SHARED_TOOLS`] collections.
-pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse, crate::jrpc::Error>  {
+pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse, crate::jrpc::Error> {
     let tools = TOOLS.read().unwrap();
-    let tool = tools.iter().chain(SHARED_TOOLS.iter())
+    let tool = tools
+        .iter()
+        .chain(SHARED_TOOLS.iter())
         .find(|t| t.name() == params.name)
         .map(|t| t.as_ref());
     match tool {
@@ -762,12 +755,10 @@ pub(crate) fn call_imp(params: ToolCallParams) -> Result<ToolCallResponse, crate
             let call = tool.call(params.arguments);
             match call {
                 Ok(response) => Ok(response),
-                Err(err) => Ok(err.into_response())
+                Err(err) => Ok(err.into_response()),
             }
         }
-        None => {
-            Err(Error::unknown_tool(params.name))
-        }
+        None => Err(Error::unknown_tool(params.name)),
     }
 }
 
@@ -788,15 +779,16 @@ pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
             Ok(params) => params,
             Err(err) => return Response::err(Error::invalid_params(err.to_string()), request.id),
         },
-        None => return Response::err(Error::invalid_params("No parameters provided".to_string()), request.id),
+        None => {
+            return Response::err(
+                Error::invalid_params("No parameters provided".to_string()),
+                request.id,
+            );
+        }
     };
     let r = call_imp(params);
     match r {
-        Ok(r) => {
-            Response::new(r, request.id)
-        }
-        Err(e) => {
-            Response::err(e, request.id)
-        }
+        Ok(r) => Response::new(r, request.id),
+        Err(e) => Response::err(e, request.id),
     }
 }

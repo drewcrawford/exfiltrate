@@ -25,14 +25,14 @@
 //! #     }
 //! # }
 //! # use logging::log;
-//! 
+//!
 //! // Simple logging
 //! log("Application started");
-//! 
+//!
 //! // Logging with formatted strings
 //! let port = 8080;
 //! log(&format!("Server listening on port {}", port));
-//! 
+//!
 //! // Error reporting
 //! match std::fs::read_to_string("config.json") {
 //!     Ok(_) => log("Configuration loaded"),
@@ -73,7 +73,7 @@
 /// #     }
 /// # }
 /// # use logging::log;
-/// 
+///
 /// log("Starting initialization");
 /// log("Initialization complete");
 /// ```
@@ -86,10 +86,10 @@
 /// #     }
 /// # }
 /// # use logging::log;
-/// 
+///
 /// let user_count = 42;
 /// log(&format!("Active users: {}", user_count));
-/// 
+///
 /// let config = "production";
 /// log(&format!("Running in {} mode", config));
 /// ```
@@ -103,7 +103,7 @@
 /// # }
 /// # use logging::log;
 /// use std::fs::File;
-/// 
+///
 /// match File::open("data.txt") {
 ///     Ok(_) => log("File opened successfully"),
 ///     Err(e) => log(&format!("Error opening file: {}", e)),

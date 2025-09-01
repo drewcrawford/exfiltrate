@@ -22,12 +22,11 @@ use std::io::Write;
 /// // Create and start a stdio server
 /// let proxy = TransitProxy::new();
 /// let server = Server::new(proxy);
-/// 
+///
 /// // Server now processes stdin/stdout in background thread
 /// # }
 /// ```
-pub struct Server {
-}
+pub struct Server {}
 
 impl Server {
     /// Creates a new stdio server for the transit proxy.
@@ -48,7 +47,7 @@ impl Server {
     ///
     /// let proxy = TransitProxy::new();
     /// let server = Server::new(proxy);
-    /// 
+    ///
     /// // Server is now running, reading from stdin and writing to stdout
     /// # }
     /// ```
@@ -90,10 +89,9 @@ impl Server {
                         }
                     }
                 }
-            }).unwrap();
+            })
+            .unwrap();
         eprintln!("Proxy started on stdin/stdout");
         Server {}
     }
-
-
 }

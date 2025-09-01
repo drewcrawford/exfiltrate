@@ -32,10 +32,10 @@
 //! impl Tool for DynamicTool {
 //!     fn name(&self) -> &str { "dynamic_tool" }
 //!     fn description(&self) -> &str { "A tool added at runtime" }
-//!     fn input_schema(&self) -> InputSchema { 
+//!     fn input_schema(&self) -> InputSchema {
 //!         InputSchema::new(vec![])
 //!     }
-//!     fn call(&self, _: HashMap<String, serde_json::Value>) 
+//!     fn call(&self, _: HashMap<String, serde_json::Value>)
 //!         -> Result<ToolCallResponse, ToolCallError> {
 //!         Ok(ToolCallResponse::new(vec!["Dynamic response".into()]))
 //!     }
@@ -48,9 +48,9 @@
 //! // and invoke it using `run_latest_tool` with name "dynamic_tool"
 //! ```
 
-use std::collections::HashMap;
-use serde_json::Value;
 use crate::tools::{InputSchema, Tool, ToolCallError, ToolCallParams, ToolCallResponse};
+use serde_json::Value;
+use std::collections::HashMap;
 
 /// Tool for discovering the current list of available tools at runtime.
 ///
@@ -73,17 +73,17 @@ use crate::tools::{InputSchema, Tool, ToolCallError, ToolCallParams, ToolCallRes
 /// ```
 /// use exfiltrate::tools::Tool;
 /// use std::collections::HashMap;
-/// 
+///
 /// // Access the shared latest_tools instance
 /// let tools = &exfiltrate::tools::SHARED_TOOLS;
 /// let latest_tools = tools.iter()
 ///     .find(|t| t.name() == "latest_tools")
 ///     .expect("latest_tools should be available");
-/// 
+///
 /// // Call with empty parameters to get current tool list
 /// let result = latest_tools.call(HashMap::new());
 /// assert!(result.is_ok());
-/// 
+///
 /// // The result contains a JSON string with all current tools
 /// if let Ok(response) = result {
 ///     // Serialize to verify the response has content
@@ -107,7 +107,10 @@ impl Tool for LatestTools {
         To run a tool discovered by this tool, use the `run_latest_tool` tool."
     }
 
-    fn call(&self, _params: std::collections::HashMap<String, serde_json::Value>) -> Result<crate::tools::ToolCallResponse, crate::tools::ToolCallError> {
+    fn call(
+        &self,
+        _params: std::collections::HashMap<String, serde_json::Value>,
+    ) -> Result<crate::tools::ToolCallResponse, crate::tools::ToolCallError> {
         let tools = crate::mcp::tools::list_int();
         let text = serde_json::to_string(&tools).unwrap();
         Ok(crate::tools::ToolCallResponse::new(vec![text.into()]))
@@ -116,9 +119,7 @@ impl Tool for LatestTools {
     fn input_schema(&self) -> crate::mcp::tools::InputSchema {
         crate::mcp::tools::InputSchema::new(vec![])
     }
-
 }
-
 
 /// Tool for executing dynamically discovered tools by name.
 ///
@@ -204,8 +205,18 @@ impl Tool for RunLatestTool {
 
     fn input_schema(&self) -> InputSchema {
         InputSchema::new(vec![
-            crate::tools::Argument::new("tool_name".to_string(), "string".to_string(), "Name of the tool to run".to_string(), true),
-            crate::tools::Argument::new("params".to_string(), "object".to_string(), "Parameters for the tool".to_string(), false),
+            crate::tools::Argument::new(
+                "tool_name".to_string(),
+                "string".to_string(),
+                "Name of the tool to run".to_string(),
+                true,
+            ),
+            crate::tools::Argument::new(
+                "params".to_string(),
+                "object".to_string(),
+                "Parameters for the tool".to_string(),
+                false,
+            ),
         ])
     }
 
@@ -214,22 +225,22 @@ impl Tool for RunLatestTool {
         if let Some(name) = params.get("tool_name").and_then(|v| v.as_str()) {
             tool_name = name.to_string();
         } else {
-            return Err(ToolCallError::new(vec!["Missing required parameter: tool_name".into()]));
+            return Err(ToolCallError::new(vec![
+                "Missing required parameter: tool_name".into(),
+            ]));
         }
-        let tool_arguments = params.get("params")
+        let tool_arguments = params
+            .get("params")
             .and_then(|v| v.as_object())
             .cloned()
             .unwrap_or_default();
 
         //convert to hashmap
-        let tool_arguments: HashMap<String, Value> = tool_arguments.into_iter()
-            .map(|(k, v)| (k, v))
-            .collect();
+        let tool_arguments: HashMap<String, Value> =
+            tool_arguments.into_iter().map(|(k, v)| (k, v)).collect();
 
         let tool_params = ToolCallParams::new(tool_name, tool_arguments);
         let r = crate::mcp::tools::call_imp(tool_params);
         r.map_err(|e| ToolCallError::new(vec![format!("Error calling tool: {:?}", e).into()]))
     }
-
 }
-

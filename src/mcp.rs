@@ -83,7 +83,7 @@
 //!         ])
 //!     }
 //!
-//!     fn call(&self, params: HashMap<String, serde_json::Value>) 
+//!     fn call(&self, params: HashMap<String, serde_json::Value>)
 //!         -> Result<ToolCallResponse, ToolCallError> {
 //!         // Tool implementation
 //!         Ok(ToolCallResponse::new(vec!["Result".into()]))
@@ -92,7 +92,7 @@
 //!
 //! // Register the tool
 //! exfiltrate::tools::add_tool(Box::new(MyCustomTool));
-//! 
+//!
 //! // Verify it was added
 //! let request = exfiltrate::jrpc::Request {
 //!     jsonrpc: "2.0".to_string(),
@@ -106,8 +106,8 @@
 //! ```
 
 use crate::jrpc::{Request, Response};
-pub mod tools;
 pub(crate) mod latest_tools;
+pub mod tools;
 
 /// Dispatches incoming JSON-RPC requests to appropriate handlers in the target application.
 ///
@@ -148,12 +148,9 @@ pub(crate) mod latest_tools;
 pub fn dispatch_in_target(request: Request) -> Response<serde_json::Value> {
     if request.method == "tools/list" {
         tools::list_process(request).erase()
-    }
-    else if request.method == "tools/call" {
+    } else if request.method == "tools/call" {
         tools::call(request).erase()
-    }
-    else {
+    } else {
         Response::err(super::jrpc::Error::method_not_found(), request.id)
     }
 }
-

@@ -1,11 +1,11 @@
-use std::net::TcpStream;
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::sync::Arc;
 use crate::jrpc::{Request, Response};
 use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
 use crate::transit::http::{ReadWebSocketOrStream, WriteWebSocketOrStream};
 use crate::transit::log_proxy::LogProxy;
+use std::collections::HashMap;
+use std::net::TcpStream;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Represents an accepted connection to the transit proxy.
 ///
@@ -24,14 +24,16 @@ impl Accept {
     ///
     /// * `bidirectional` - The bidirectional proxy for message communication
     /// * `addr` - String representation of the peer's address
-    pub fn new(bidirectional: crate::bidirectional_proxy::BidirectionalProxy, addr: String) -> Self {
+    pub fn new(
+        bidirectional: crate::bidirectional_proxy::BidirectionalProxy,
+        addr: String,
+    ) -> Self {
         Accept {
             bidirectional,
             addr,
         }
     }
 }
-
 
 /// Thread-safe container for managing accepted connections and notification handling.
 ///
@@ -69,11 +71,10 @@ pub struct TransitProxy {
     shared_accept: Arc<Mutex<SharedAccept>>,
     message_receiver: std::sync::mpsc::Receiver<crate::jrpc::Response<serde_json::Value>>,
     message_sender: std::sync::mpsc::Sender<crate::jrpc::Response<serde_json::Value>>,
-
 }
 
 /// Errors that can occur during transit proxy operations.
-#[derive(Debug,thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// No target application is currently connected to the proxy
     #[error("Not connected to the exfiltrated application")]
@@ -86,10 +87,18 @@ pub enum Error {
     JRPCError(#[from] crate::jrpc::Error),
 }
 
-fn bidi_fn(message_sender: &std::sync::mpsc::Sender<crate::jrpc::Response<serde_json::Value>>, per_msg_shared_accept: &Arc<Mutex<SharedAccept>>, msg: Box<[u8]>) -> Option<Box<[u8]>> {
-    eprintln!("transit_proxy received message: {:?}", String::from_utf8_lossy(&msg));
+fn bidi_fn(
+    message_sender: &std::sync::mpsc::Sender<crate::jrpc::Response<serde_json::Value>>,
+    per_msg_shared_accept: &Arc<Mutex<SharedAccept>>,
+    msg: Box<[u8]>,
+) -> Option<Box<[u8]>> {
+    eprintln!(
+        "transit_proxy received message: {:?}",
+        String::from_utf8_lossy(&msg)
+    );
     //try parsing as a response
-    let response: Result<crate::jrpc::Response<serde_json::Value>, _> = serde_json::from_slice(&msg);
+    let response: Result<crate::jrpc::Response<serde_json::Value>, _> =
+        serde_json::from_slice(&msg);
     match response {
         Ok(response) => {
             message_sender.send(response).unwrap();
@@ -101,7 +110,10 @@ fn bidi_fn(message_sender: &std::sync::mpsc::Sender<crate::jrpc::Response<serde_
             match notification {
                 Ok(notification) => {
                     eprintln!("Received notification: {:?}", notification);
-                    per_msg_shared_accept.lock().unwrap().received_notification(notification);
+                    per_msg_shared_accept
+                        .lock()
+                        .unwrap()
+                        .received_notification(notification);
                     None
                 }
                 Err(e) => {
@@ -129,9 +141,7 @@ impl TransitProxy {
     /// // Proxy is now listening on 127.0.0.1:1985
     /// # }
     /// ```
-    pub fn new(
-
-    ) -> Self {
+    pub fn new() -> Self {
         let listener = std::net::TcpListener::bind("127.0.0.1:1985").unwrap();
         eprintln!("transit: listening on {}", listener.local_addr().unwrap());
         let shared_accept = Arc::new(Mutex::new(SharedAccept::new()));
@@ -142,24 +152,32 @@ impl TransitProxy {
         let per_msg_message_sender = message_sender.clone();
         std::thread::Builder::new()
             .name("exfiltrate::TransitProxy".to_string())
-            .spawn( move || {
+            .spawn(move || {
                 let stream = listener.accept().unwrap();
-                eprintln!("transit_proxy accepted internal_proxy from {}", stream.0.peer_addr().unwrap());
+                eprintln!(
+                    "transit_proxy accepted internal_proxy from {}",
+                    stream.0.peer_addr().unwrap()
+                );
                 let split = (stream.0.try_clone().unwrap(), stream.0);
                 let write_stream = WriteWebSocketOrStream::Stream(split.0);
                 let read_stream = ReadWebSocketOrStream::Stream(split.1);
 
-                let bidirectional_proxy = crate::bidirectional_proxy::BidirectionalProxy::new(write_stream, read_stream, move |msg|  {
-                    bidi_fn(&per_msg_message_sender,&per_msg_shared_accept, msg)
-                });
+                let bidirectional_proxy = crate::bidirectional_proxy::BidirectionalProxy::new(
+                    write_stream,
+                    read_stream,
+                    move |msg| bidi_fn(&per_msg_message_sender, &per_msg_shared_accept, msg),
+                );
                 let peer_string = format!("{}", stream.1);
-                per_thread_shared_accept.lock().unwrap().latest_accept = Some(Accept { bidirectional: bidirectional_proxy, addr:peer_string });
-
-            }).unwrap();
+                per_thread_shared_accept.lock().unwrap().latest_accept = Some(Accept {
+                    bidirectional: bidirectional_proxy,
+                    addr: peer_string,
+                });
+            })
+            .unwrap();
         TransitProxy {
             shared_accept,
             message_receiver,
-            message_sender
+            message_sender,
         }
     }
 
@@ -188,16 +206,19 @@ impl TransitProxy {
     /// # Arguments
     ///
     /// * `new_accept` - Optional tuple of write and read transports
-    pub(crate) fn change_accept(&self, new_accept: Option<(WriteWebSocketOrStream, ReadWebSocketOrStream)>) {
-
+    pub(crate) fn change_accept(
+        &self,
+        new_accept: Option<(WriteWebSocketOrStream, ReadWebSocketOrStream)>,
+    ) {
         let bidi = match new_accept {
             Some(ws) => {
                 let move_sender = self.message_sender.clone();
                 let move_shared_accept = self.shared_accept.clone();
-                let bidirectional = crate::bidirectional_proxy::BidirectionalProxy::new(ws.0, ws.1, move |msg| {
-                    let move_sender = move_sender.clone();
-                    bidi_fn(&move_sender, &move_shared_accept, msg)
-                });
+                let bidirectional =
+                    crate::bidirectional_proxy::BidirectionalProxy::new(ws.0, ws.1, move |msg| {
+                        let move_sender = move_sender.clone();
+                        bidi_fn(&move_sender, &move_shared_accept, msg)
+                    });
                 Some(Accept::new(bidirectional, "WebSocket".to_string()))
             }
             None => None,
@@ -205,7 +226,6 @@ impl TransitProxy {
         let mut shared = self.shared_accept.lock().unwrap();
         shared.latest_accept = bidi;
         eprintln!("transit: Changed accept to {:?}", shared.latest_accept);
-
     }
 }
 
@@ -226,7 +246,7 @@ impl TransitProxy {
     /// * `Some(Response)` for requests
     /// * `None` for notifications
     pub fn received_data(&mut self, data: &[u8]) -> Option<Response<serde_json::Value>> {
-        let parse_request: Result<Request,_> = serde_json::from_slice(&data);
+        let parse_request: Result<Request, _> = serde_json::from_slice(&data);
         match parse_request {
             Ok(request) => {
                 let request_id = request.id.clone();
@@ -240,12 +260,11 @@ impl TransitProxy {
                     }
                 };
                 Some(r)
-
             }
             Err(_) => {
-
                 //try parsing as a notification
-                let parse_notification: crate::jrpc::Notification = serde_json::from_slice(&data).expect("Failed to parse JSON-RPC notification");
+                let parse_notification: crate::jrpc::Notification =
+                    serde_json::from_slice(&data).expect("Failed to parse JSON-RPC notification");
                 eprintln!("transit: Parsed notification: {:?}", parse_notification);
                 if parse_notification.method == "notifications/initialized" {
                     self.initial_setup();
@@ -271,15 +290,14 @@ impl TransitProxy {
     ///
     /// * `Ok(Response)` on success
     /// * `Err(Error)` if sending fails or no target is connected
-    pub fn send_request(&mut self, message: crate::jrpc::Request) -> Result<crate::jrpc::Response<serde_json::Value>,Error> {
+    pub fn send_request(
+        &mut self,
+        message: crate::jrpc::Request,
+    ) -> Result<crate::jrpc::Response<serde_json::Value>, Error> {
         // some things we do locally always
         match message.method.as_str() {
-            "initialize" => {
-                return Ok(initialize(message).erase())
-            }
-            _ => {
-
-            }
+            "initialize" => return Ok(initialize(message).erase()),
+            _ => {}
         }
         let mut shared = self.shared_accept.lock().unwrap();
         let request = serde_json::to_vec(&message).unwrap();
@@ -290,13 +308,22 @@ impl TransitProxy {
                 match message.method.as_str() {
                     "tools/call" => {
                         //try proxy_only tools first
-                        let tool_call_params: ToolCallParams = serde_json::from_value(message.params.as_ref().unwrap().clone()).unwrap();
-                        let r= crate::transit::builtin_tools::call_proxy_only_tool(tool_call_params.clone());
+                        let tool_call_params: ToolCallParams =
+                            serde_json::from_value(message.params.as_ref().unwrap().clone())
+                                .unwrap();
+                        let r = crate::transit::builtin_tools::call_proxy_only_tool(
+                            tool_call_params.clone(),
+                        );
                         match r {
                             Ok(response) => {
                                 let response = Response::new(response, message.id).erase();
-                                eprintln!("transit: Sending response to proxy-only tool call: {:?}", response);
-                                accept.bidirectional.send(&serde_json::to_vec(&response).unwrap())?;
+                                eprintln!(
+                                    "transit: Sending response to proxy-only tool call: {:?}",
+                                    response
+                                );
+                                accept
+                                    .bidirectional
+                                    .send(&serde_json::to_vec(&response).unwrap())?;
                                 return Ok(response);
                             }
                             Err(_) => {
@@ -307,20 +334,33 @@ impl TransitProxy {
                         match tool_call_params.name.as_str() {
                             "run_latest_tool" => {
                                 //here we need to get the inner tool params
-                                let tool_name = tool_call_params.arguments.get("tool_name").unwrap().as_str().unwrap().to_string();
-                                let tool_arguments = tool_call_params.arguments.get("params")
+                                let tool_name = tool_call_params
+                                    .arguments
+                                    .get("tool_name")
+                                    .unwrap()
+                                    .as_str()
+                                    .unwrap()
+                                    .to_string();
+                                let tool_arguments = tool_call_params
+                                    .arguments
+                                    .get("params")
                                     .and_then(|v| v.as_object())
                                     .cloned()
                                     .unwrap_or_default();
                                 //convert to hashmap
-                                let tool_arguments: HashMap<String, serde_json::Value> = tool_arguments.into_iter()
-                                    .map(|(k, v)| (k, v))
-                                    .collect();
-                                let inner_tool_call_params = ToolCallParams::new(tool_name, tool_arguments);
+                                let tool_arguments: HashMap<String, serde_json::Value> =
+                                    tool_arguments.into_iter().map(|(k, v)| (k, v)).collect();
+                                let inner_tool_call_params =
+                                    ToolCallParams::new(tool_name, tool_arguments);
 
-
-                                let proxy_result = crate::transit::builtin_tools::call_proxy_only_tool(inner_tool_call_params);
-                                eprintln!("transit: proxy_result for run_latest_tool: {:?}", proxy_result);
+                                let proxy_result =
+                                    crate::transit::builtin_tools::call_proxy_only_tool(
+                                        inner_tool_call_params,
+                                    );
+                                eprintln!(
+                                    "transit: proxy_result for run_latest_tool: {:?}",
+                                    proxy_result
+                                );
                                 match proxy_result {
                                     Ok(response) => {
                                         let response = Response::new(response, message.id).erase();
@@ -340,42 +380,67 @@ impl TransitProxy {
                     }
                 }
                 accept.bidirectional.send(&request)?;
-                eprintln!("transit: Request sent to remote accept: {:?} {:?}", accept.addr, String::from_utf8_lossy(&request));
+                eprintln!(
+                    "transit: Request sent to remote accept: {:?} {:?}",
+                    accept.addr,
+                    String::from_utf8_lossy(&request)
+                );
                 drop(shared);
                 eprintln!("transit: Waiting for response to request: {:?}", message);
                 let mut msg = self.message_receiver.recv().unwrap();
-                assert!(msg.id == message.id, "Received response with mismatched ID: expected {:?}, got {:?}", message.id, msg.id);
+                assert!(
+                    msg.id == message.id,
+                    "Received response with mismatched ID: expected {:?}, got {:?}",
+                    message.id,
+                    msg.id
+                );
                 eprintln!("transit: Received response: {:?}", msg);
                 //some tools we merge local and remote behaviors
                 match message.method.as_str() {
                     "tools/list" => {
                         //we want to merge this with the builtin_only tools
-                        let mut additional_tools = crate::transit::builtin_tools::proxy_only_tools();
+                        let mut additional_tools =
+                            crate::transit::builtin_tools::proxy_only_tools();
                         //parse tool list
-                        let mut target_tool_list: ToolList = serde_json::from_value(msg.result.unwrap()).unwrap();
+                        let mut target_tool_list: ToolList =
+                            serde_json::from_value(msg.result.unwrap()).unwrap();
                         target_tool_list.tools.append(&mut additional_tools.tools);
                         msg.result = Some(serde_json::to_value(target_tool_list).unwrap());
                         eprintln!("transit injected proxy-only tools into response: {:?}", msg);
-                    },
+                    }
                     "tools/call" => {
                         let params = message.params.as_ref().unwrap();
-                        let tool_call_params: ToolCallParams = serde_json::from_value(params.clone()).unwrap();
+                        let tool_call_params: ToolCallParams =
+                            serde_json::from_value(params.clone()).unwrap();
                         match tool_call_params.name.as_str() {
                             "latest_tools" => {
                                 //we want to merge this with the builtin_only tools
-                                let mut additional_tools = crate::transit::builtin_tools::proxy_only_tools();
+                                let mut additional_tools =
+                                    crate::transit::builtin_tools::proxy_only_tools();
                                 //parse tool list
                                 eprintln!("msg result before: {:?}", msg.result);
-                                let mut target_response: ToolCallResponse = serde_json::from_value(msg.result.unwrap()).unwrap();
-                                assert_eq!(target_response.content.len(), 1, "Expected exactly one tool in response, got: {:?}", target_response.content);
+                                let mut target_response: ToolCallResponse =
+                                    serde_json::from_value(msg.result.unwrap()).unwrap();
+                                assert_eq!(
+                                    target_response.content.len(),
+                                    1,
+                                    "Expected exactly one tool in response, got: {:?}",
+                                    target_response.content
+                                );
                                 let tool_info = target_response.content.remove(0);
 
-                                let mut target_tool_list: ToolList = serde_json::from_str(tool_info.as_str().unwrap()).unwrap();
+                                let mut target_tool_list: ToolList =
+                                    serde_json::from_str(tool_info.as_str().unwrap()).unwrap();
                                 target_tool_list.tools.append(&mut additional_tools.tools);
                                 let as_json = serde_json::to_string(&target_tool_list).unwrap();
-                                let tool_call_response = ToolCallResponse::new(vec![as_json.into()]);
-                                msg.result = Some(serde_json::to_value(tool_call_response).unwrap());
-                                eprintln!("transit injected proxy-only tools into response: {:?}", msg);
+                                let tool_call_response =
+                                    ToolCallResponse::new(vec![as_json.into()]);
+                                msg.result =
+                                    Some(serde_json::to_value(tool_call_response).unwrap());
+                                eprintln!(
+                                    "transit injected proxy-only tools into response: {:?}",
+                                    msg
+                                );
                             }
                             _ => {
                                 //we don't do anything special for other tools
@@ -391,11 +456,11 @@ impl TransitProxy {
         }
     }
 
-    fn initial_setup(&mut self) {
+    fn initial_setup(&mut self) {}
 
-    }
-
-    fn local_fallback(message: crate::jrpc::Request) -> Result<crate::jrpc::Response<serde_json::Value>, Error> {
+    fn local_fallback(
+        message: crate::jrpc::Request,
+    ) -> Result<crate::jrpc::Response<serde_json::Value>, Error> {
         eprintln!("transit: local fallback for request: {:?}", &message);
         match message.method.as_str() {
             "tools/list" => {
@@ -403,7 +468,8 @@ impl TransitProxy {
                 Ok(Response::new(result, message.id).erase())
             }
             "tools/call" => {
-                let params: crate::tools::ToolCallParams = serde_json::from_value(message.params.unwrap()).unwrap();
+                let params: crate::tools::ToolCallParams =
+                    serde_json::from_value(message.params.unwrap()).unwrap();
                 let result = crate::transit::builtin_tools::call_proxy_tool(params);
                 match result {
                     Ok(response) => Ok(Response::new(response, message.id).erase()),
@@ -411,7 +477,10 @@ impl TransitProxy {
                 }
             }
             _ => {
-                eprintln!("transit: No connection available, cannot send request: {:?}", message);
+                eprintln!(
+                    "transit: No connection available, cannot send request: {:?}",
+                    message
+                );
                 return Err(Error::NotConnected);
             }
         }
@@ -441,10 +510,9 @@ impl SharedAccept {
             "exfiltrate/logwise/record" => {
                 LogProxy::current().add_log(notification.params.unwrap().to_string())
             }
-            _ =>  {
+            _ => {
                 (self.process_notifications)(notification);
             }
-
         }
     }
 
@@ -469,7 +537,6 @@ struct InitializeResult {
     capabilities: HashMap<String, HashMap<String, serde_json::Value>>,
     #[serde(rename = "serverInfo")]
     server_info: HashMap<String, serde_json::Value>,
-
 }
 
 impl InitializeResult {
@@ -486,7 +553,6 @@ impl InitializeResult {
             protocol_version: "2025-06-18".to_string(),
             capabilities,
             server_info,
-
         }
     }
 }

@@ -1,4 +1,3 @@
-
 #[cfg(not(target_arch = "wasm32"))]
 use std::time;
 #[cfg(target_arch = "wasm32")]

@@ -27,17 +27,17 @@ By proxying it of course.  Your browser opens a websocket to the proxy applicati
 Since the async story is bad there too, I just wrote a ground-up WebSocket implementation with threads.  Threads for everyone.
 
 */
-pub mod mcp;
-pub mod jrpc;
-pub mod messages;
-#[cfg(feature="transit")]
-pub mod transit;
-mod internal_proxy;
 mod bidirectional_proxy;
-#[cfg(feature="logwise")]
-pub mod logwise;
-mod sys;
+mod internal_proxy;
+pub mod jrpc;
 mod logging;
+#[cfg(feature = "logwise")]
+pub mod logwise;
+pub mod mcp;
+pub mod messages;
 mod once_nonlock;
+mod sys;
+#[cfg(feature = "transit")]
+pub mod transit;
 
 pub use mcp::tools;

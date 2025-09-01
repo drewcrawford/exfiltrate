@@ -49,7 +49,7 @@
 //! // Get list of all proxy tools
 //! let tools = builtin_tools::proxy_tools();
 //! assert!(!tools.tools.is_empty(), "Should have at least shared tools");
-//! 
+//!
 //! // Get proxy-only tools (may be empty without logwise feature)
 //! let proxy_only = builtin_tools::proxy_only_tools();
 //! #[cfg(feature = "logwise")]
@@ -57,9 +57,9 @@
 //! # }
 //! ```
 
+use crate::tools::{Tool, ToolCallParams, ToolCallResponse, ToolInfo, ToolList};
 use std::collections::HashMap;
 use std::sync::LazyLock;
-use crate::tools::{Tool, ToolCallParams, ToolCallResponse, ToolInfo, ToolList};
 
 /// Static collection of tools that are only available in the proxy application.
 ///
@@ -68,9 +68,9 @@ use crate::tools::{Tool, ToolCallParams, ToolCallResponse, ToolInfo, ToolList};
 /// functionality.
 static PROXY_ONLY_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
     vec![
-        #[cfg(feature="logwise")]
+        #[cfg(feature = "logwise")]
         Box::new(crate::transit::log_proxy::LogwiseRead),
-        #[cfg(feature="logwise")]
+        #[cfg(feature = "logwise")]
         Box::new(crate::transit::log_proxy::LogwiseGrep),
     ]
 });
@@ -97,10 +97,10 @@ static PROXY_ONLY_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
 /// # fn example() {
 /// # use crate::transit::builtin_tools;
 /// let tools = builtin_tools::proxy_tools();
-/// 
+///
 /// // The proxy always has at least the shared tools
 /// assert!(!tools.tools.is_empty());
-/// 
+///
 /// // Iterate through available tools
 /// for tool_info in &tools.tools {
 ///     println!("Tool: {}", tool_info.name);
@@ -108,7 +108,8 @@ static PROXY_ONLY_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
 /// # }
 /// ```
 pub fn proxy_tools() -> ToolList {
-    let tools = crate::tools::SHARED_TOOLS.iter()
+    let tools = crate::tools::SHARED_TOOLS
+        .iter()
         .chain(PROXY_ONLY_TOOLS.iter())
         .map(|tool| ToolInfo::from_tool(tool.as_ref()))
         .collect::<Vec<_>>();
@@ -134,14 +135,14 @@ pub fn proxy_tools() -> ToolList {
 /// # fn example() {
 /// # use crate::transit::builtin_tools;
 /// let proxy_only = builtin_tools::proxy_only_tools();
-/// 
+///
 /// // The number of proxy-only tools depends on feature flags
 /// #[cfg(feature = "logwise")]
 /// {
 ///     // With logwise feature, we have log inspection tools
 ///     assert!(proxy_only.tools.len() >= 2);
 /// }
-/// 
+///
 /// #[cfg(not(feature = "logwise"))]
 /// {
 ///     // Without logwise feature, no proxy-only tools
@@ -150,7 +151,8 @@ pub fn proxy_tools() -> ToolList {
 /// # }
 /// ```
 pub fn proxy_only_tools() -> ToolList {
-    let tools = PROXY_ONLY_TOOLS.iter()
+    let tools = PROXY_ONLY_TOOLS
+        .iter()
         .map(|tool| ToolInfo::from_tool(tool.as_ref()))
         .collect::<Vec<_>>();
     ToolList { tools }
@@ -192,7 +194,7 @@ pub fn proxy_only_tools() -> ToolList {
 /// let mut args = HashMap::new();
 /// args.insert("start_pos".to_string(), json!(0));
 /// args.insert("length".to_string(), json!(10));
-/// 
+///
 /// let params = ToolCallParams::new("logwise_read".to_string(), args);
 /// match call_proxy_tool(params) {
 ///     Ok(response) => {
@@ -211,19 +213,27 @@ pub fn call_proxy_tool(params: ToolCallParams) -> Result<ToolCallResponse, crate
     //convert to hashmap
     let hashmap: HashMap<_, _> = params.arguments;
 
-    if let Some(tool) = PROXY_ONLY_TOOLS.iter().find(|tool| tool.name() == params.name) {
+    if let Some(tool) = PROXY_ONLY_TOOLS
+        .iter()
+        .find(|tool| tool.name() == params.name)
+    {
         match tool.call(hashmap) {
             Ok(response) => Ok(response),
-            Err(e) => Ok(e.into_response())
+            Err(e) => Ok(e.into_response()),
         }
-    }
-    else if let Some(tool) = crate::tools::SHARED_TOOLS.iter().find(|tool| tool.name() == params.name) {
+    } else if let Some(tool) = crate::tools::SHARED_TOOLS
+        .iter()
+        .find(|tool| tool.name() == params.name)
+    {
         match tool.call(hashmap) {
             Ok(response) => Ok(response),
-            Err(e) => Ok(e.into_response())
+            Err(e) => Ok(e.into_response()),
         }
     } else {
-        Err(crate::jrpc::Error::invalid_params(format!("No tool found with the name {}", params.name)))
+        Err(crate::jrpc::Error::invalid_params(format!(
+            "No tool found with the name {}",
+            params.name
+        )))
     }
 }
 
@@ -270,16 +280,24 @@ pub fn call_proxy_tool(params: ToolCallParams) -> Result<ToolCallResponse, crate
 /// }
 /// # }
 /// ```
-pub fn call_proxy_only_tool(params: ToolCallParams) -> Result<ToolCallResponse, crate::jrpc::Error> {
+pub fn call_proxy_only_tool(
+    params: ToolCallParams,
+) -> Result<ToolCallResponse, crate::jrpc::Error> {
     //try proxy tools first
     //convert to hashmap
     let hashmap: HashMap<_, _> = params.arguments;
-    if let Some(tool) = PROXY_ONLY_TOOLS.iter().find(|tool| tool.name() == params.name) {
+    if let Some(tool) = PROXY_ONLY_TOOLS
+        .iter()
+        .find(|tool| tool.name() == params.name)
+    {
         match tool.call(hashmap) {
             Ok(response) => Ok(response),
-            Err(e) => Ok(e.into_response())
+            Err(e) => Ok(e.into_response()),
         }
     } else {
-        Err(crate::jrpc::Error::invalid_params(format!("No tool found with the name {}", params.name)))
+        Err(crate::jrpc::Error::invalid_params(format!(
+            "No tool found with the name {}",
+            params.name
+        )))
     }
 }

@@ -29,14 +29,14 @@
 
 #![cfg(target_arch = "wasm32")]
 
-use std::fmt::Display;
-use wasm_bindgen::JsCast;
-use std::sync::{Arc, Mutex};
 use super::super::logging::log;
+use std::fmt::Display;
+use std::sync::{Arc, Mutex};
+use wasm_bindgen::JsCast;
 
-use wasm_bindgen::closure::Closure;
 use crate::bidirectional_proxy::{ReadTransport, WriteTransport};
 use crate::once_nonlock::OnceNonLock;
+use wasm_bindgen::closure::Closure;
 
 /// Error types for WebSocket adapter operations.
 ///
@@ -59,7 +59,7 @@ use crate::once_nonlock::OnceNonLock;
 #[derive(Debug)]
 pub enum Error {
     /// Failed to establish a WebSocket connection.
-    /// 
+    ///
     /// Contains a description of the connection failure.
     #[allow(dead_code)]
     CantConnect(String),
@@ -133,7 +133,7 @@ const ADDR: &str = "ws://localhost:1984";
 ///
 /// // Create a WebSocket adapter pair
 /// let (mut write_adapter, _read_adapter) = websocket_adapter::adapter().await?;
-/// 
+///
 /// // Send data through the WebSocket
 /// write_adapter.write(b"Hello, WebSocket!")?;
 /// write_adapter.flush()?;
@@ -166,7 +166,7 @@ pub struct WriteAdapter {
 ///
 /// // Create a WebSocket adapter pair
 /// let (_write_adapter, mut read_adapter) = websocket_adapter::adapter().await?;
-/// 
+///
 /// // Read data from the WebSocket (non-blocking)
 /// let mut buffer = [0u8; 1024];
 /// match read_adapter.read_nonblock(&mut buffer)? {
@@ -186,13 +186,13 @@ pub struct ReadApapter {
 ///
 /// This static ensures that only one worker thread is created per process,
 /// and provides a way to communicate with that thread.
-static SEND_WORKER_MESSAGE: OnceNonLock<continue_stream::Sender<WorkerMessage>> = OnceNonLock::new();
-
+static SEND_WORKER_MESSAGE: OnceNonLock<continue_stream::Sender<WorkerMessage>> =
+    OnceNonLock::new();
 
 /// Message requesting a WebSocket reconnection.
 ///
 /// Contains a channel to send back the result of the connection attempt.
-struct ReconnectMessage{
+struct ReconnectMessage {
     func_sender: r#continue::Sender<Result<(WriteAdapter, ReadApapter), Error>>,
 }
 
@@ -220,7 +220,6 @@ enum WorkerMessage {
 async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
     log("thread started");
 
-
     let mut socket = None;
 
     loop {
@@ -239,9 +238,7 @@ async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
                                 log("WebSocketAdapter: WebSocket created successfully");
                                 socket = Some(s);
                                 reconnect.func_sender.send(Ok((
-                                    WriteAdapter {
-                                        send: write_send,
-                                    },
+                                    WriteAdapter { send: write_send },
                                     ReadApapter {
                                         recv: read_recv,
                                         buf: Vec::new(),
@@ -249,7 +246,10 @@ async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
                                 )));
                             }
                             Err(e) => {
-                                log(&format!("WebSocketAdapter: Failed to create WebSocket: {:?}", e));
+                                log(&format!(
+                                    "WebSocketAdapter: Failed to create WebSocket: {:?}",
+                                    e
+                                ));
                                 reconnect.func_sender.send(Err(e));
                                 // Optionally, you could send an error back to the main thread here
                             }
@@ -290,10 +290,13 @@ async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
 ///
 /// * `Ok(WebSocket)` - If the connection was successfully established
 /// * `Err(Error)` - If the connection failed
-async fn create_web_socket(read_send: std::sync::mpsc::Sender<Vec<u8>>, write_recv: continue_stream::Receiver<Vec<u8>>) -> Result<web_sys::WebSocket, Error> {
+async fn create_web_socket(
+    read_send: std::sync::mpsc::Sender<Vec<u8>>,
+    write_recv: continue_stream::Receiver<Vec<u8>>,
+) -> Result<web_sys::WebSocket, Error> {
     let ws = web_sys::WebSocket::new(ADDR);
     log("WebSocket created");
-    let (func_sender,func_fut) = r#continue::continuation::<Result<(), Error>>();
+    let (func_sender, func_fut) = r#continue::continuation::<Result<(), Error>>();
     let func_sender = OneShot::new(func_sender);
     match ws {
         Ok(ws) => {
@@ -331,8 +334,7 @@ async fn create_web_socket(read_send: std::sync::mpsc::Sender<Vec<u8>>, write_re
                     let mut vec = vec![0; u8_array.length() as usize];
                     u8_array.copy_to(&mut vec[..]);
                     read_send.send(vec).unwrap();
-                }
-                else {
+                } else {
                     let str = format!("Received non-binary message: {:?}", event.data());
                     web_sys::console::log_1(&str.into());
                     unimplemented!("This is not currently supported");
@@ -363,7 +365,9 @@ async fn create_web_socket(read_send: std::sync::mpsc::Sender<Vec<u8>>, write_re
                             // web_sys::console::log_1(&format!("WebSocketAdapter: sent {} bytes", len).into());
                         }
                         Err(e) => {
-                            web_sys::console::error_1(&format!("WebSocketAdapter: failed to send data: {:?}", e).into());
+                            web_sys::console::error_1(
+                                &format!("WebSocketAdapter: failed to send data: {:?}", e).into(),
+                            );
                             break;
                         }
                     }
@@ -371,13 +375,11 @@ async fn create_web_socket(read_send: std::sync::mpsc::Sender<Vec<u8>>, write_re
             });
             let f = func_fut.await;
             f.map(|_| ws)
-
         }
-        Err(e) => {
-            Err(Error::CantConnect(e.as_string().unwrap_or_else(|| "Unknown error".to_string())))
-        }
+        Err(e) => Err(Error::CantConnect(
+            e.as_string().unwrap_or_else(|| "Unknown error".to_string()),
+        )),
     }
-
 }
 
 /// Creates a WebSocket adapter pair for bidirectional communication.
@@ -411,11 +413,11 @@ async fn create_web_socket(read_send: std::sync::mpsc::Sender<Vec<u8>>, write_re
 ///
 /// // Create WebSocket adapters
 /// let (write_adapter, read_adapter) = websocket_adapter::adapter().await?;
-/// 
+///
 /// // Use with BidirectionalProxy
 /// let proxy = BidirectionalProxy::new(
-///     write_adapter, 
-///     read_adapter, 
+///     write_adapter,
+///     read_adapter,
 ///     |msg| {
 ///         // Process incoming messages
 ///         println!("Received {} bytes", msg.len());
@@ -429,7 +431,7 @@ pub async fn adapter() -> Result<(WriteAdapter, ReadApapter), Error> {
     //put ws communication on its own thread
     //one thread only per process!
     SEND_WORKER_MESSAGE.try_get_or_init(move || {
-        let (c,r) = continue_stream::continuation();
+        let (c, r) = continue_stream::continuation();
         crate::sys::thread::Builder::new()
             .name("exfiltrate::WebsocketAdapterWorker".to_owned())
             .spawn(|| {
@@ -441,16 +443,19 @@ pub async fn adapter() -> Result<(WriteAdapter, ReadApapter), Error> {
     });
     match SEND_WORKER_MESSAGE.get().as_ref() {
         Some(sender) => {
-            let (func_send, func_recv) = r#continue::continuation::<Result<(WriteAdapter, ReadApapter), Error>>();
+            let (func_send, func_recv) =
+                r#continue::continuation::<Result<(WriteAdapter, ReadApapter), Error>>();
             //send a reconnect message to the worker thread
-            sender.send(WorkerMessage::Reconnect(ReconnectMessage{
+            sender.send(WorkerMessage::Reconnect(ReconnectMessage {
                 func_sender: func_send,
             }));
             func_recv.await
         }
         None => {
             log("WebsocketAdapter: worker thread not initialized");
-            Err(Error::CantConnect("Worker thread not initialized".to_string()))
+            Err(Error::CantConnect(
+                "Worker thread not initialized".to_string(),
+            ))
         }
     }
 }
@@ -483,7 +488,7 @@ pub async fn adapter() -> Result<(WriteAdapter, ReadApapter), Error> {
 ///
 /// // Call this in worker threads to prevent accidental termination
 /// websocket_adapter::patch_close();
-/// 
+///
 /// // Now calling close() will not terminate the thread
 /// // (it will just log a message instead)
 /// # }
@@ -499,8 +504,6 @@ pub fn patch_close() {
         .expect("failed to patch close");
     wrapper.forget();
 }
-
-
 
 impl WriteTransport for WriteAdapter {
     /// Writes data to the WebSocket connection.
@@ -546,7 +549,10 @@ impl ReadTransport for ReadApapter {
     ///
     /// * `Ok(n)` - The number of bytes read (0 if no data available)
     /// * `Err(_)` - If an error occurred (currently never returns errors)
-    fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, crate::bidirectional_proxy::Error> {
+    fn read_nonblock(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<usize, crate::bidirectional_proxy::Error> {
         //copy from self.buf first
         if !self.buf.is_empty() {
             let copy_bytes = std::cmp::min(self.buf.len(), buf.len());
@@ -565,7 +571,7 @@ impl ReadTransport for ReadApapter {
                 }
                 Ok(copy_bytes)
             }
-            Err(_) => Ok(0)
+            Err(_) => Ok(0),
         }
     }
 }

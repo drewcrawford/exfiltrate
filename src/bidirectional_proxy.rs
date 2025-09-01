@@ -132,9 +132,6 @@ pub trait ReadTransport: Send + 'static + Debug {
     fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, Error>;
 }
 
-
-
-
 /// Error type for bidirectional proxy operations.
 ///
 /// This enum encapsulates all possible errors that can occur during
@@ -151,7 +148,7 @@ pub trait ReadTransport: Send + 'static + Debug {
 /// #     #[error("IO error: {0}")]
 /// #     IoError(#[from] io::Error),
 /// # }
-/// 
+///
 /// fn handle_error() -> Result<(), Error> {
 ///     // Errors are typically created from I/O operations
 ///     Err(Error::IoError(io::Error::new(
@@ -159,7 +156,7 @@ pub trait ReadTransport: Send + 'static + Debug {
 ///         "Cannot connect to server"
 ///     )))
 /// }
-/// 
+///
 /// # fn main() {
 /// match handle_error() {
 ///     Err(Error::IoError(e)) if e.kind() == io::ErrorKind::ConnectionRefused => {
@@ -173,7 +170,7 @@ pub trait ReadTransport: Send + 'static + Debug {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// An I/O error occurred during transport operations.
-    /// 
+    ///
     /// This variant wraps standard I/O errors that may occur during
     /// reading, writing, or flushing data to/from the transport.
     #[error("IO error: {0}")]
@@ -201,7 +198,7 @@ pub enum Error {
 #[derive(Debug)]
 struct ReadState {
     /// Buffer containing partially received message data.
-    /// 
+    ///
     /// This buffer accumulates bytes from multiple read operations
     /// until complete messages can be extracted.
     buf: Vec<u8>,
@@ -224,9 +221,7 @@ impl ReadState {
     /// assert!(state.buf.is_empty());
     /// ```
     fn new() -> Self {
-        ReadState {
-            buf: Vec::new(),
-        }
+        ReadState { buf: Vec::new() }
     }
 
     /// Appends new bytes to the internal buffer.
@@ -319,11 +314,11 @@ impl ReadState {
     /// msg.extend_from_slice(&5u32.to_le_bytes());
     /// msg.extend_from_slice(b"hello");
     /// state.buf = msg;
-    /// 
+    ///
     /// let extracted = state.pop_msg();
     /// assert_eq!(extracted.as_deref(), Some(&b"hello"[..]));
     /// assert!(state.buf.is_empty());
-    /// 
+    ///
     /// // Example with partial message
     /// state.buf = vec![0, 0, 0]; // Only 3 bytes of length header
     /// assert!(state.pop_msg().is_none()); // Not enough data
@@ -341,7 +336,11 @@ impl ReadState {
         // eprintln!("pop_msg: Full buffer preview (first 60 bytes): {:?}", &self.buf[..self.buf.len().min(60)]);
 
         if size > 10_000 {
-            eprintln!("ERROR: Invalid message size {} detected. Buffer contents: {:?}", size, &self.buf[..self.buf.len().min(100)]);
+            eprintln!(
+                "ERROR: Invalid message size {} detected. Buffer contents: {:?}",
+                size,
+                &self.buf[..self.buf.len().min(100)]
+            );
             panic!("Probably the wrong size.");
         }
 
@@ -359,8 +358,6 @@ impl ReadState {
         Some(msg)
     }
 }
-
-
 
 /// A bidirectional message proxy that handles framed message communication.
 ///
@@ -416,13 +413,14 @@ impl BidirectionalProxy {
     ///
     /// # Example
     ///
-   
-    pub fn new<F,W,R>(write: W, read: R, recv: F) -> Self
-    where F: Fn(Box<[u8]>) -> Option<Box<[u8]>> + Send + 'static,
-    R: ReadTransport, W: WriteTransport  {
 
+    pub fn new<F, W, R>(write: W, read: R, recv: F) -> Self
+    where
+        F: Fn(Box<[u8]>) -> Option<Box<[u8]>> + Send + 'static,
+        R: ReadTransport,
+        W: WriteTransport,
+    {
         let (s, r) = std::sync::mpsc::channel::<Box<[u8]>>();
-
 
         crate::sys::thread::Builder::new()
             .name("exfiltrate::BidirectionalProxy".to_owned())
@@ -431,7 +429,8 @@ impl BidirectionalProxy {
                 let mut write = write;
                 // we wind up copying it into here
                 let mut partial_read = ReadState::new();
-                loop { //the entire flow
+                loop {
+                    //the entire flow
                     //todo: this buffer strategy is not as efficient as it could be
                     let mut buf = vec![0; 1024];
 
@@ -498,10 +497,10 @@ impl BidirectionalProxy {
                     }
                 }
                 //exit main loop
-            }).unwrap();
+            })
+            .unwrap();
 
-
-        BidirectionalProxy {  data_sender: s }
+        BidirectionalProxy { data_sender: s }
     }
 
     /// Sends a message through the proxy.
@@ -533,11 +532,16 @@ impl BidirectionalProxy {
     /// little-endian) before transmission.
 
     pub fn send(&self, data: &[u8]) -> Result<(), Error> {
-        self.data_sender.send(data.to_vec().into_boxed_slice())
-            .map_err(|_| Error::IoError(std::io::Error::new(std::io::ErrorKind::Other, "Failed to send data to proxy")))?;
+        self.data_sender
+            .send(data.to_vec().into_boxed_slice())
+            .map_err(|_| {
+                Error::IoError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Failed to send data to proxy",
+                ))
+            })?;
         Ok(())
     }
-
 }
 
 /// Implementation of `WriteTransport` for TCP streams.
@@ -560,7 +564,7 @@ impl WriteTransport for TcpStream {
     /// - `Ok(())` if all data was successfully written
     /// - `Err(Error::IoError)` if the write failed or was partial
     fn write(&mut self, data: &[u8]) -> Result<(), Error> {
-        match std::io::Write::write(self,data) {
+        match std::io::Write::write(self, data) {
             Ok(size) if size == data.len() => Ok(()),
             Ok(_) => Err(Error::IoError(std::io::Error::new(
                 std::io::ErrorKind::WriteZero,

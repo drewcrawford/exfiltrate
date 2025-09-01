@@ -49,11 +49,11 @@
 
 mod websocket_adapter;
 
+use crate::bidirectional_proxy::BidirectionalProxy;
+use crate::internal_proxy::Error::NotConnected;
+use crate::once_nonlock::OnceNonLock;
 use std::net::TcpStream;
 use std::sync::{Arc, LazyLock, Mutex};
-use crate::internal_proxy::Error::NotConnected;
-use crate::bidirectional_proxy::BidirectionalProxy;
-use crate::once_nonlock::OnceNonLock;
 
 /// Error types for internal proxy operations.
 ///
@@ -91,10 +91,7 @@ pub enum Error {
 ///
 /// This static instance is lazily initialized on first access and remains
 /// alive for the duration of the program.
-static INTERNAL_PROXY: LazyLock<InternalProxy> = LazyLock::new(|| {
-    InternalProxy::new()
-});
-
+static INTERNAL_PROXY: LazyLock<InternalProxy> = LazyLock::new(|| InternalProxy::new());
 
 /// Platform-specific write stream type.
 ///
@@ -142,7 +139,7 @@ pub struct InternalProxy {
     /// In practice, notifications are sent from the main thread on wasm,
     /// so we can't use a simple Mutex.
     buffered_notification_sender: std::sync::mpsc::Sender<crate::jrpc::Notification>,
-    
+
     /// Receiver for buffered notifications.
     ///
     /// Protected by a Mutex, but we can simply fail if the lock is contended.
@@ -174,18 +171,27 @@ pub struct InternalProxy {
 /// Currently panics if the received message cannot be parsed as a valid JSON-RPC request.
 fn bidi_fn(msg: Box<[u8]>) -> Option<Box<[u8]>> {
     //attempt parse as request
-    eprintln!("ip: received bidi message: {:?}", String::from_utf8_lossy(&msg));
+    eprintln!(
+        "ip: received bidi message: {:?}",
+        String::from_utf8_lossy(&msg)
+    );
     let request: Result<crate::jrpc::Request, _> = serde_json::from_slice(&msg);
     match request {
         Ok(request) => {
             eprintln!("ip: received request: {:?}", request);
             let response = crate::mcp::dispatch_in_target(request);
             let response_bytes = serde_json::to_vec(&response).unwrap();
-            eprintln!("ip: sending response {:?}", String::from_utf8_lossy(&response_bytes));
+            eprintln!(
+                "ip: sending response {:?}",
+                String::from_utf8_lossy(&response_bytes)
+            );
             Some(response_bytes.into_boxed_slice())
         }
         Err(e) => {
-            todo!("Not implemented yet: Received request from internal proxy: {:?}", e);
+            todo!(
+                "Not implemented yet: Received request from internal proxy: {:?}",
+                e
+            );
         }
     }
 }
@@ -229,17 +235,22 @@ impl InternalProxy {
             let s = TcpStream::connect(ADDR);
             match s {
                 Ok(stream) => {
-                    let write_stream = stream.try_clone().expect("Failed to clone stream for writing");
+                    let write_stream = stream
+                        .try_clone()
+                        .expect("Failed to clone stream for writing");
                     let read_stream = stream;
-                    let stream = crate::bidirectional_proxy::BidirectionalProxy::new(write_stream, read_stream, bidi_fn);
+                    let stream = crate::bidirectional_proxy::BidirectionalProxy::new(
+                        write_stream,
+                        read_stream,
+                        bidi_fn,
+                    );
                     Some(stream)
                 }
-                Err(_e) => {
-                    return None
-                }
+                Err(_e) => return None,
             }
         });
-        #[cfg(target_arch = "wasm32")] {
+        #[cfg(target_arch = "wasm32")]
+        {
             //on wasm, we need to connect asynchronously
             let f = self.bidirectional_proxy.init_async(async move || {
                 if web_sys::window().is_none() {
@@ -248,7 +259,9 @@ impl InternalProxy {
                 let stream = websocket_adapter::adapter().await;
                 match stream {
                     Ok(stream) => {
-                        let stream = crate::bidirectional_proxy::BidirectionalProxy::new(stream.0, stream.1, bidi_fn);
+                        let stream = crate::bidirectional_proxy::BidirectionalProxy::new(
+                            stream.0, stream.1, bidi_fn,
+                        );
                         Some(stream)
                     }
                     Err(e) => {
@@ -259,7 +272,6 @@ impl InternalProxy {
             });
             wasm_bindgen_futures::spawn_local(f)
         }
-
     }
 
     /// Sends a JSON-RPC notification through the proxy.
@@ -283,12 +295,12 @@ impl InternalProxy {
     /// use exfiltrate::jrpc::Notification;
     /// use exfiltrate::internal_proxy::{InternalProxy, Error};
     /// use serde_json::json;
-    /// 
+    ///
     /// let notification = Notification::new(
     ///     "log".to_string(),
     ///     Some(json!({"message": "Hello"}))
     /// );
-    /// 
+    ///
     /// let proxy = InternalProxy::current();
     /// match proxy.send_notification(notification) {
     ///     Ok(()) => println!("Notification sent successfully"),
@@ -329,19 +341,21 @@ impl InternalProxy {
     /// use exfiltrate::jrpc::Notification;
     /// use exfiltrate::internal_proxy::InternalProxy;
     /// use serde_json::json;
-    /// 
+    ///
     /// // This is commonly used by the logwise module for buffering log messages
     /// let notification = Notification::new(
     ///     "log".to_string(),
     ///     Some(json!({"level": "info", "message": "Application started"}))
     /// );
-    /// 
+    ///
     /// let proxy = InternalProxy::current();
     /// proxy.buffer_notification(notification);
     /// // The notification will be sent when a connection becomes available
     /// ```
     pub fn buffer_notification(&self, notification: crate::jrpc::Notification) {
-        self.buffered_notification_sender.send(notification).unwrap();
+        self.buffered_notification_sender
+            .send(notification)
+            .unwrap();
         self.send_buffered_if_possible();
     }
 
@@ -364,15 +378,16 @@ impl InternalProxy {
                 while let Some(notification) = buffered_receiver.try_recv().ok() {
                     take.push(notification);
                 }
-            }
-            else {
+            } else {
                 crate::logging::log(&"ip: Send contended");
-
             }
             for notification in take {
                 let msg = serde_json::to_string(&notification).unwrap();
                 if let Err(e) = proxy.send(msg.as_bytes()) {
-                    crate::logging::log(&format!("ip: Failed to send buffered notification: {}", e));
+                    crate::logging::log(&format!(
+                        "ip: Failed to send buffered notification: {}",
+                        e
+                    ));
                 }
             }
         }
@@ -400,10 +415,10 @@ impl InternalProxy {
     /// use exfiltrate::internal_proxy::InternalProxy;
     /// use exfiltrate::jrpc::Notification;
     /// use serde_json::json;
-    /// 
+    ///
     /// // This is the primary way to access the internal proxy
     /// let proxy = InternalProxy::current();
-    /// 
+    ///
     /// let notification = Notification::new(
     ///     "status".to_string(),
     ///     Some(json!({"ready": true}))
@@ -413,5 +428,4 @@ impl InternalProxy {
     pub fn current() -> &'static InternalProxy {
         &INTERNAL_PROXY
     }
-
 }

@@ -63,6 +63,8 @@
 //! Always import time and thread APIs through this module rather than directly
 //! from std or platform-specific crates. This ensures your code remains portable:
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use std::time;
 /// Platform-appropriate time API.
 ///
 /// Re-exports the appropriate time implementation based on the target platform:
@@ -102,8 +104,6 @@
 /// - **Monotonicity**: Guaranteed on both platforms but implementation differs
 #[cfg(target_arch = "wasm32")]
 pub use web_time as time;
-#[cfg(not(target_arch = "wasm32"))]
-pub use std::time;
 
 /// Platform-appropriate threading API.
 ///

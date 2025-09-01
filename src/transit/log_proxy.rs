@@ -53,18 +53,16 @@
 //! # }
 //! ```
 
+use crate::tools::{Argument, InputSchema, Tool, ToolCallError, ToolCallResponse};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
-use serde_json::Value;
-use crate::tools::{Argument, InputSchema, Tool, ToolCallError, ToolCallResponse};
 
 /// Global singleton instance of the log proxy.
 ///
 /// This static instance is lazily initialized and provides the central
 /// log storage for the entire application.
-static CURRENT_LOGPROXY: LazyLock<LogProxy> = LazyLock::new(|| {
-    LogProxy::new()
-});
+static CURRENT_LOGPROXY: LazyLock<LogProxy> = LazyLock::new(|| LogProxy::new());
 
 /// Central log storage and management system.
 ///
@@ -118,12 +116,12 @@ impl LogProxy {
     pub fn current() -> &'static LogProxy {
         &CURRENT_LOGPROXY
     }
-    
+
     /// Creates a new log proxy instance.
     ///
     /// This is called internally during static initialization.
     fn new() -> LogProxy {
-        LogProxy{
+        LogProxy {
             logs: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -149,7 +147,7 @@ impl LogProxy {
     pub fn reset(&self) {
         self.logs.lock().unwrap().clear();
     }
-    
+
     /// Adds a new log entry to the storage.
     ///
     /// Appends the provided log message to the end of the log buffer.
@@ -257,13 +255,12 @@ impl Tool for LogwiseRead {
 
     fn call(&self, params: HashMap<String, Value>) -> Result<ToolCallResponse, ToolCallError> {
         let log_proxy = LogProxy::current().logs.lock().unwrap();
-        let length = params.get("length")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(10) as usize;
+        let length = params.get("length").and_then(|v| v.as_i64()).unwrap_or(10) as usize;
 
         let default_start_pos = log_proxy.len().saturating_sub(length);
 
-        let start_pos = params.get("start_pos")
+        let start_pos = params
+            .get("start_pos")
             .and_then(|v| v.as_i64())
             .map(|v| v as usize)
             .unwrap_or(default_start_pos);
@@ -281,10 +278,9 @@ impl Tool for LogwiseRead {
         let response_text = serde_json::to_string(&response).unwrap();
         Ok(ToolCallResponse::new(vec![response_text.into()]))
     }
-
 }
 /// Represents a single log entry that matched a search pattern.
-#[derive(Debug,serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct MatchedLog {
     /// The full log message that matched
     log: String,
@@ -296,7 +292,7 @@ struct MatchedLog {
 ///
 /// Contains all logs that matched the search pattern along with
 /// their positions in the log buffer.
-#[derive(Debug,serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct LogwiseGrepResponse {
     /// Total number of logs in storage
     all_logs: usize,
@@ -375,21 +371,26 @@ impl Tool for LogwiseGrep {
         - `MESSAGE` is the log message
         "#;
 
-        InputSchema::new(vec![
-            Argument::new("pattern".to_string(), "string".to_string(), pattern_doc.to_string(), true),
-        ])
+        InputSchema::new(vec![Argument::new(
+            "pattern".to_string(),
+            "string".to_string(),
+            pattern_doc.to_string(),
+            true,
+        )])
     }
 
     fn call(&self, params: HashMap<String, Value>) -> Result<ToolCallResponse, ToolCallError> {
-        let pattern = params.get("pattern")
+        let pattern = params
+            .get("pattern")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolCallError::new(vec!["No pattern".into()]))?;
 
-        let regex = regex::Regex::new(pattern).map_err(|_| ToolCallError::new(vec!["Invalid regex".into()]))?;
+        let regex = regex::Regex::new(pattern)
+            .map_err(|_| ToolCallError::new(vec!["Invalid regex".into()]))?;
         let log_proxy = LogProxy::current().logs.lock().unwrap();
 
-
-        let logs: Vec<MatchedLog> = log_proxy.iter()
+        let logs: Vec<MatchedLog> = log_proxy
+            .iter()
             .enumerate()
             .filter_map(|(i, log)| {
                 if regex.is_match(log) {
@@ -407,7 +408,8 @@ impl Tool for LogwiseGrep {
             all_logs: log_proxy.len(),
             matched_logs: logs,
         };
-        let res = serde_json::to_string(&response).map_err(|e| ToolCallError::new(vec![e.to_string().into()]))?;
+        let res = serde_json::to_string(&response)
+            .map_err(|e| ToolCallError::new(vec![e.to_string().into()]))?;
         Ok(ToolCallResponse::new(vec![res.into()]))
     }
 }

@@ -59,10 +59,10 @@
 //! #     }
 //! # }
 //! # use transit::transit_proxy::TransitProxy;
-//! 
+//!
 //! // Create a transit proxy for routing messages
 //! let transit_proxy = TransitProxy::new();
-//! 
+//!
 //! // The proxy can be used with different server types
 //! # // Note: In actual usage, you would keep the server alive
 //! ```
@@ -87,12 +87,12 @@
 //! # }
 //! # use transit::transit_proxy::TransitProxy;
 //! # use transit::http::Server;
-//! 
+//!
 //! let transit_proxy = TransitProxy::new();
-//! 
+//!
 //! // Configure HTTP server with custom address
 //! let server = Server::new("127.0.0.1:8080", transit_proxy);
-//! 
+//!
 //! // Server runs on background threads
 //! // In production, you would keep the main thread alive
 //! ```
@@ -117,12 +117,12 @@
 //! # }
 //! # use transit::transit_proxy::TransitProxy;
 //! # use transit::stdio::Server;
-//! 
+//!
 //! let transit_proxy = TransitProxy::new();
-//! 
+//!
 //! // Configure stdio server for IPC communication
 //! let server = Server::new(transit_proxy);
-//! 
+//!
 //! // Server communicates via stdin/stdout
 //! // In production, you would keep the main thread alive
 //! ```
@@ -142,7 +142,7 @@
 //! - WebSocket support
 //! - Message routing and forwarding
 
-#![cfg(feature="transit")]
+#![cfg(feature = "transit")]
 
 use exfiltrate::transit::transit_proxy::TransitProxy;
 

@@ -27,11 +27,11 @@
 //!
 //! // Create a transit proxy
 //! let proxy = TransitProxy::new();
-//! 
+//!
 //! // Start HTTP server on port 1984
 //! // Note: Server spawns background threads
 //! let _server = Server::new("127.0.0.1:1984", proxy);
-//! 
+//!
 //! // Server is now running in the background
 //! // In a real application, you would keep the process alive
 //! # }
@@ -45,10 +45,10 @@
 //!
 //! // Create a transit proxy
 //! let proxy = TransitProxy::new();
-//! 
+//!
 //! // Start stdio server (communicates via stdin/stdout)
 //! let _server = Server::new(proxy);
-//! 
+//!
 //! // Server is now processing stdin/stdout in background thread
 //! # }
 //! ```
@@ -68,11 +68,12 @@
 //! result in a compilation error.
 
 #[cfg(target_arch = "wasm32")]
-compile_error!("The `transit` feature is not supported on wasm32 targets. Build for another target or disable the `transit` feature.");
+compile_error!(
+    "The `transit` feature is not supported on wasm32 targets. Build for another target or disable the `transit` feature."
+);
 
-pub mod http;
-pub mod transit_proxy;
-pub mod stdio;
-mod log_proxy;
 mod builtin_tools;
-
+pub mod http;
+mod log_proxy;
+pub mod stdio;
+pub mod transit_proxy;

@@ -17,7 +17,6 @@
 //! This is particularly useful in proxy implementations that need to forward
 //! messages without necessarily understanding their content.
 
-
 /// Represents a message that can be sent through the exfiltrate system.
 ///
 /// This enum provides a unified type for different kinds of JSON-RPC messages,
@@ -40,16 +39,15 @@
 
 pub enum SendMessage {
     /// A JSON-RPC request message that expects a response.
-    /// 
+    ///
     /// Requests include an ID field for response correlation and are used
     /// for bidirectional communication patterns where the sender needs to
     /// receive a result or error response.
     Request(crate::jrpc::Request),
-    
+
     /// A JSON-RPC notification message that does not expect a response.
-    /// 
+    ///
     /// Notifications are used for one-way communication such as logging,
     /// status updates, or events that don't require acknowledgment.
     Notification(crate::jrpc::Notification),
 }
-

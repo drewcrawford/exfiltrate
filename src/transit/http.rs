@@ -1,11 +1,10 @@
+use crate::bidirectional_proxy::{BidirectionalProxy, Error, ReadTransport, WriteTransport};
+use crate::transit::transit_proxy::{Accept, TransitProxy};
+use base64::Engine;
 use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
-use base64::Engine;
-use crate::bidirectional_proxy::{BidirectionalProxy, Error, WriteTransport, ReadTransport};
-use crate::transit::transit_proxy::{Accept, TransitProxy};
-
 
 #[derive(PartialEq)]
 enum ParseState {
@@ -34,9 +33,7 @@ struct WebsocketInfo {
 
 impl HTTPParser {
     fn new() -> Self {
-        HTTPParser {
-            buf: Vec::new(),
-        }
+        HTTPParser { buf: Vec::new() }
     }
 
     fn push(&mut self, data: &[u8]) {
@@ -55,18 +52,15 @@ impl HTTPParser {
                 pos += 1; //newline
                 found_blank = true;
                 break;
-            }
-            else if line == b"\r" {
+            } else if line == b"\r" {
                 //blank line indicates end of headers
                 pos += 2; //carriage return + newline
                 found_blank = true;
                 break;
-            }
-            else {
+            } else {
                 http_lines.push(line);
                 pos += line.len() + 1; //newline
             }
-
         }
         if !found_blank {
             return HTTPParseResult::NotReady; //not enough data to parse
@@ -75,7 +69,7 @@ impl HTTPParser {
             Some(line) => line,
             None => {
                 self.buf.clear();
-                return HTTPParseResult::Rejected("No request line found".to_string())
+                return HTTPParseResult::Rejected("No request line found".to_string());
             }
         };
 
@@ -84,26 +78,35 @@ impl HTTPParser {
         let method = match split_line.next() {
             Some(method) => method,
             None => {
-                let f = format!("Invalid request line: {}", String::from_utf8_lossy(request_line));
+                let f = format!(
+                    "Invalid request line: {}",
+                    String::from_utf8_lossy(request_line)
+                );
                 self.buf.clear();
                 return HTTPParseResult::Rejected(f);
-            },
+            }
         };
         let url = match split_line.next() {
             Some(url) => url,
             None => {
-                let f = format!("Invalid request line: {}", String::from_utf8_lossy(request_line));
+                let f = format!(
+                    "Invalid request line: {}",
+                    String::from_utf8_lossy(request_line)
+                );
                 self.buf.clear();
                 return HTTPParseResult::Rejected(f);
-            },
+            }
         };
         let version = match split_line.next() {
             Some(version) => version,
             None => {
-                let f = format!("Invalid request line: {}", String::from_utf8_lossy(request_line));
+                let f = format!(
+                    "Invalid request line: {}",
+                    String::from_utf8_lossy(request_line)
+                );
                 self.buf.clear();
                 return HTTPParseResult::Rejected(f);
-            },
+            }
         };
         //the rest of the lines are headers
         let mut headers = HashMap::new();
@@ -111,44 +114,55 @@ impl HTTPParser {
             let mut split = line.splitn(2, |&b| b == b':');
             let key = match split.next() {
                 //http headers are case-insensitive, so we convert to lowercase
-                Some(key) => String::from_utf8_lossy(key).trim().to_lowercase().to_owned(),
+                Some(key) => String::from_utf8_lossy(key)
+                    .trim()
+                    .to_lowercase()
+                    .to_owned(),
                 None => {
-                    let f = format!("Invalid header line: {}", String::from_utf8_lossy(request_line));
+                    let f = format!(
+                        "Invalid header line: {}",
+                        String::from_utf8_lossy(request_line)
+                    );
                     self.buf.clear();
                     return HTTPParseResult::Rejected(f);
-                },
+                }
             };
             let val = match split.next() {
                 Some(val) => String::from_utf8_lossy(val).trim().to_owned(),
                 None => {
-                    let f = format!("Invalid header line: {}", String::from_utf8_lossy(request_line));
+                    let f = format!(
+                        "Invalid header line: {}",
+                        String::from_utf8_lossy(request_line)
+                    );
                     self.buf.clear();
                     return HTTPParseResult::Rejected(f);
-                },
+                }
             };
             headers.insert(key, val);
         }
         //with that out of the way, let's consider some cases.
         if url != b"/" {
             self.buf.clear();
-            return HTTPParseResult::NotFound
+            return HTTPParseResult::NotFound;
         }
         let accept_header = headers.get("accept").map(|s| s.as_str()).unwrap_or("");
         if method == b"GET" && accept_header.contains("text/event-stream") {
             self.buf.clear();
             HTTPParseResult::SSE
-        }
-        else if method == b"POST" {
+        } else if method == b"POST" {
             //we need to read the body
             let content_length = match headers.get("content-length") {
                 Some(len) => match len.parse::<usize>() {
                     Ok(len) => len,
                     Err(_) => {
                         self.buf.clear();
-                        return HTTPParseResult::Rejected(format!("Invalid Content-Length header: {}", len));
-                    },
+                        return HTTPParseResult::Rejected(format!(
+                            "Invalid Content-Length header: {}",
+                            len
+                        ));
+                    }
                 },
-                None =>  {
+                None => {
                     let keys = headers.keys().map(|k| k.to_string()).collect::<Vec<_>>();
                     let msg = format!("Content-Length header not found. Headers: {:?}", keys);
                     self.buf.clear();
@@ -161,18 +175,23 @@ impl HTTPParser {
             let body = self.buf[pos..pos + content_length].to_vec();
             self.buf.clear();
             HTTPParseResult::Post(body)
-        } else if method == b"GET" && headers.get("upgrade").map(|s| s.as_str()) == Some("websocket") {
-            let key = headers.get("sec-websocket-key").map(|s| s.as_str()).unwrap_or("").to_owned();
-            HTTPParseResult::Websocket(WebsocketInfo {key, leftover_bytes: self.buf[pos..].to_vec() })
-        }
-        else {
+        } else if method == b"GET"
+            && headers.get("upgrade").map(|s| s.as_str()) == Some("websocket")
+        {
+            let key = headers
+                .get("sec-websocket-key")
+                .map(|s| s.as_str())
+                .unwrap_or("")
+                .to_owned();
+            HTTPParseResult::Websocket(WebsocketInfo {
+                key,
+                leftover_bytes: self.buf[pos..].to_vec(),
+            })
+        } else {
             let f = format!("request {}", String::from_utf8_lossy(&self.buf));
             self.buf.clear();
             HTTPParseResult::Rejected(f)
         }
-
-
-
     }
 }
 
@@ -291,8 +310,6 @@ impl WriteTransport for WriteWebSocketOrStream {
             }
         }
     }
-
-
 }
 impl ReadTransport for ReadWebSocketOrStream {
     fn read_nonblock(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
@@ -303,7 +320,9 @@ impl ReadTransport for ReadWebSocketOrStream {
             }
             ReadWebSocketOrStream::WebSocket(stream) => {
                 //see if we can parse a frame with no read
-                if let Ok(bytes) = stream.try_parse_frame(buf) && bytes > 0 {
+                if let Ok(bytes) = stream.try_parse_frame(buf)
+                    && bytes > 0
+                {
                     // eprintln!("WebSocket read_nonblock: parsed {} bytes from buffer", bytes);
                     return Ok(bytes);
                 }
@@ -338,7 +357,8 @@ impl WebsocketReadStream {
                 if frame.data.len() > bytes_to_copy {
                     // eprintln!("WebSocket frame data larger than buffer: data_len={}, buf_len={}, overflow={}",
                     //     frame.data.len(), buf.len(), frame.data.len() - bytes_to_copy);
-                    self.tcp_layer_buf.extend_from_slice(&frame.data[bytes_to_copy..]);
+                    self.tcp_layer_buf
+                        .extend_from_slice(&frame.data[bytes_to_copy..]);
                 }
                 Ok(bytes_to_copy)
             }
@@ -348,16 +368,14 @@ impl WebsocketReadStream {
             Err(WebsocketFrameError::Rejected(reason)) => {
                 eprintln!("WebSocket Frame Rejected: {}", reason);
                 self.tcp_layer_buf.drain(..);
-                Err(Error::IoError(std::io::Error::new(std::io::ErrorKind::InvalidData, reason)))
+                Err(Error::IoError(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    reason,
+                )))
             }
-
         }
     }
 }
-
-
-
-
 
 /// HTTP server for the transit proxy system.
 ///
@@ -378,14 +396,13 @@ impl WebsocketReadStream {
 /// // Start server on localhost port 1984
 /// let proxy = TransitProxy::new();
 /// let server = Server::new("127.0.0.1:1984", proxy);
-/// 
+///
 /// // Server runs in background thread
 /// // Keep the main thread alive
 /// # // In real usage: std::thread::park();
 /// # }
 /// ```
-pub struct Server {
-}
+pub struct Server {}
 
 /// Queue for sending Server-Sent Events (SSE) messages to connected clients.
 ///
@@ -397,20 +414,18 @@ pub struct MessageQueue {
 
 impl MessageQueue {
     fn new(stream: TcpStream) -> Self {
-        Self {
-            stream,
-        }
+        Self { stream }
     }
 
     fn send(&mut self, message: &[u8]) -> Result<(), std::io::Error> {
         for line in message.lines() {
             let line = line.unwrap();
             std::io::Write::write(&mut self.stream, "data: ".as_bytes()).unwrap();
-            std::io::Write::write(&mut self.stream,line.as_bytes()).unwrap();
-            std::io::Write::write(&mut self.stream,"\r\n".as_bytes()).unwrap();
+            std::io::Write::write(&mut self.stream, line.as_bytes()).unwrap();
+            std::io::Write::write(&mut self.stream, "\r\n".as_bytes()).unwrap();
             // eprintln!("Sent message to {:?}: {}", self.stream.peer_addr(),format!("data: {}", line));
         }
-        std::io::Write::write(&mut self.stream,"\r\n\r\n".as_bytes()).unwrap(); // End of message
+        std::io::Write::write(&mut self.stream, "\r\n\r\n".as_bytes()).unwrap(); // End of message
         std::io::Write::flush(&mut self.stream)?;
         Ok(())
     }
@@ -423,7 +438,11 @@ struct Session {
 }
 
 impl Session {
-    fn new(stream: std::net::TcpStream, proxy: Arc<Mutex<TransitProxy>>, active_session: Arc<Mutex<Option<MessageQueue>>>) -> Self {
+    fn new(
+        stream: std::net::TcpStream,
+        proxy: Arc<Mutex<TransitProxy>>,
+        active_session: Arc<Mutex<Option<MessageQueue>>>,
+    ) -> Self {
         Session {
             stream: Some(stream),
             proxy,
@@ -449,8 +468,10 @@ impl Session {
                 HTTPParseResult::SSE => {
                     //begin response
                     let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n";
-                    std::io::Write::write(self.stream.as_mut().unwrap(), response).expect("Failed to write to stream");
-                    std::io::Write::flush(self.stream.as_mut().unwrap()).expect("Failed to flush stream");
+                    std::io::Write::write(self.stream.as_mut().unwrap(), response)
+                        .expect("Failed to write to stream");
+                    std::io::Write::flush(self.stream.as_mut().unwrap())
+                        .expect("Failed to flush stream");
                     //set up the message queue
                     let message_queue = MessageQueue::new(self.stream.take().unwrap());
                     self.active_session.lock().unwrap().replace(message_queue);
@@ -458,8 +479,13 @@ impl Session {
                 }
                 HTTPParseResult::NotFound => {
                     let response = b"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found";
-                    self.stream.as_mut().unwrap().write_all(response).expect("Failed to write 404 response");
-                    std::io::Write::flush(self.stream.as_mut().unwrap()).expect("Failed to flush stream");
+                    self.stream
+                        .as_mut()
+                        .unwrap()
+                        .write_all(response)
+                        .expect("Failed to write 404 response");
+                    std::io::Write::flush(self.stream.as_mut().unwrap())
+                        .expect("Failed to flush stream");
                     eprintln!("Sent 404 Not Found response");
                     //continue to next request
                 }
@@ -471,9 +497,18 @@ impl Session {
                     // continue to read more data
                 }
                 HTTPParseResult::Rejected(reason) => {
-                    let response = format!("HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", reason.len(), reason);
-                    self.stream.as_mut().unwrap().write_all(response.as_bytes()).expect("Failed to write 400 response");
-                    std::io::Write::flush(self.stream.as_mut().unwrap()).expect("Failed to flush stream");
+                    let response = format!(
+                        "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+                        reason.len(),
+                        reason
+                    );
+                    self.stream
+                        .as_mut()
+                        .unwrap()
+                        .write_all(response.as_bytes())
+                        .expect("Failed to write 400 response");
+                    std::io::Write::flush(self.stream.as_mut().unwrap())
+                        .expect("Failed to flush stream");
                     eprintln!("Sent 400 Bad Request response: {}", reason);
                     //continue to next request
                 }
@@ -494,8 +529,13 @@ impl Session {
                          \r\n",
                         accept = accept
                     );
-                    self.stream.as_mut().unwrap().write_all(response.as_bytes()).unwrap();
-                    std::io::Write::flush(self.stream.as_mut().unwrap()).expect("Failed to flush stream");
+                    self.stream
+                        .as_mut()
+                        .unwrap()
+                        .write_all(response.as_bytes())
+                        .unwrap();
+                    std::io::Write::flush(self.stream.as_mut().unwrap())
+                        .expect("Failed to flush stream");
                     eprintln!("Sent 101 Switching Protocols upgrade");
                     //take stream
                     let stream = self.stream.take().unwrap();
@@ -505,7 +545,10 @@ impl Session {
                     let read_stream = WebsocketReadStream::new(stream, info.leftover_bytes);
                     let read_stream = ReadWebSocketOrStream::WebSocket(read_stream);
 
-                    self.proxy.lock().unwrap().change_accept(Some((write_stream, read_stream)));
+                    self.proxy
+                        .lock()
+                        .unwrap()
+                        .change_accept(Some((write_stream, read_stream)));
                     return; //promoted to transit proxy
                 }
             }
@@ -519,10 +562,14 @@ impl Session {
                 let as_bytes = serde_json::to_vec(&response).unwrap();
                 let stream = self.stream.as_mut().unwrap();
                 // Write the response back to the stream
-                std::io::Write::write(stream,b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ").unwrap();
-                std::io::Write::write(stream,as_bytes.len().to_string().as_bytes()).unwrap();
-                std::io::Write::write(stream,b"\r\n\r\n").unwrap();
-                std::io::Write::write(stream,&as_bytes).unwrap();
+                std::io::Write::write(
+                    stream,
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ",
+                )
+                .unwrap();
+                std::io::Write::write(stream, as_bytes.len().to_string().as_bytes()).unwrap();
+                std::io::Write::write(stream, b"\r\n\r\n").unwrap();
+                std::io::Write::write(stream, &as_bytes).unwrap();
                 std::io::Write::flush(stream).expect("Failed to flush stream");
                 eprintln!("Sent response: {:?}", String::from_utf8_lossy(&as_bytes));
             }
@@ -532,8 +579,6 @@ impl Session {
                 std::io::Write::flush(stream).expect("Failed to flush stream");
             }
         }
-
-
     }
 }
 
@@ -565,7 +610,10 @@ impl Server {
     /// Panics if the server cannot bind to the specified address.
     pub fn new<A: ToSocketAddrs>(addr: A, proxy: TransitProxy) -> Self {
         //listen on a tcp socket
-        eprintln!("http: starting MCP server on {}", addr.to_socket_addrs().unwrap().next().unwrap());
+        eprintln!(
+            "http: starting MCP server on {}",
+            addr.to_socket_addrs().unwrap().next().unwrap()
+        );
         let listener = std::net::TcpListener::bind(addr).unwrap();
         let active_session = Arc::new(Mutex::new(None::<MessageQueue>));
         let move_active_session = active_session.clone();
@@ -574,44 +622,54 @@ impl Server {
             if let Some(ref mut session) = *sessions {
                 let as_bytes = serde_json::to_vec(&notification).unwrap();
                 match session.send(&as_bytes) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => {
-                        eprintln!("http: failed to send notification {:?}: {}", notification, e);
+                        eprintln!(
+                            "http: failed to send notification {:?}: {}",
+                            notification, e
+                        );
                         //if we fail to send, we should remove the session
                         *sessions = None;
                     }
                 }
             } else {
-                eprintln!("http: no active session for notification {:?}", notification);
+                eprintln!(
+                    "http: no active session for notification {:?}",
+                    notification
+                );
             }
         });
         let proxy = Arc::new(Mutex::new(proxy));
 
-
         let move_proxy = proxy.clone();
         std::thread::Builder::new()
-            .name("exfiltrate-server".to_string()).spawn(move || {
-
-            loop {
-                let (stream,addr) = listener.accept().unwrap();
-                Self::on_accept(stream, addr, move_proxy.clone(), active_session.clone());
-            }
-        }).unwrap();
-        Server {
-        }
+            .name("exfiltrate-server".to_string())
+            .spawn(move || {
+                loop {
+                    let (stream, addr) = listener.accept().unwrap();
+                    Self::on_accept(stream, addr, move_proxy.clone(), active_session.clone());
+                }
+            })
+            .unwrap();
+        Server {}
     }
 
-    fn on_accept(stream: std::net::TcpStream, addr: std::net::SocketAddr, proxy: Arc<Mutex<TransitProxy>>, sessions: Arc<Mutex<Option<MessageQueue>>>) {
+    fn on_accept(
+        stream: std::net::TcpStream,
+        addr: std::net::SocketAddr,
+        proxy: Arc<Mutex<TransitProxy>>,
+        sessions: Arc<Mutex<Option<MessageQueue>>>,
+    ) {
         //start a new thread to handle the connection
         eprintln!("http: Accepted connection from {}", addr);
 
         std::thread::Builder::new()
             .name(format!("exfiltrate-server-{}", addr))
             .spawn(move || {
-                let mut session = Session::new(stream,proxy, sessions);
+                let mut session = Session::new(stream, proxy, sessions);
                 session.run();
-
-            }).unwrap();
+            })
+            .unwrap();
     }
 }
 
@@ -627,18 +685,18 @@ enum WebsocketFrameError {
 }
 impl WebsocketFrame {
     fn new(data: Vec<u8>, mask: bool) -> Self {
-        WebsocketFrame { data,mask }
+        WebsocketFrame { data, mask }
     }
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut frame = Vec::new();
         //https://datatracker.ietf.org/doc/html/rfc6455#section-5.2
         //effectively first byte is the opcode,
-        const BINARY : u8 = 0b1000_0010; //binary frame, FIN
+        const BINARY: u8 = 0b1000_0010; //binary frame, FIN
         frame.push(BINARY); // us
         //second byte is the payload length
-        const MASK_ON : u8 = 0b10000000;
-        const MASK_OFF : u8 = 0b0000000;
+        const MASK_ON: u8 = 0b10000000;
+        const MASK_OFF: u8 = 0b0000000;
         let mask_current = if self.mask { MASK_ON } else { MASK_OFF };
         if self.data.len() <= 125 {
             frame.push(self.data.len() as u8 | mask_current);
@@ -646,7 +704,7 @@ impl WebsocketFrame {
             frame.push(126 | mask_current);
             frame.extend_from_slice(&(self.data.len() as u16).to_be_bytes());
         } else {
-            frame.push(127| mask_current);
+            frame.push(127 | mask_current);
             frame.extend_from_slice(&(self.data.len() as u64).to_be_bytes());
         }
         if self.mask {
@@ -669,8 +727,12 @@ impl WebsocketFrame {
             todo!("FIN bit not handled");
         }
         let opcode = bytes[0] & 0b0111_1111;
-        if opcode != 0x2 { //binary frame
-            return Err(WebsocketFrameError::Rejected(format!("Invalid opcode: {}", opcode)));
+        if opcode != 0x2 {
+            //binary frame
+            return Err(WebsocketFrameError::Rejected(format!(
+                "Invalid opcode: {}",
+                opcode
+            )));
         }
         //second byte is the payload length
         let payload_length = bytes[1] & 0b0111_1111; //mask bit is ignored here
@@ -695,12 +757,7 @@ impl WebsocketFrame {
             len = u64::from_be_bytes(len_bytes.try_into().unwrap()) as usize;
             mask_begin = 10;
         }
-        let mask_bytes = if mask {
-            4
-        }
-        else {
-            0
-        };
+        let mask_bytes = if mask { 4 } else { 0 };
         let data_begin = mask_begin + mask_bytes;
         if bytes.len() < data_begin + len {
             return Err(WebsocketFrameError::FrameTooShort);
