@@ -1,6 +1,8 @@
 /*!
 An embeddable MCP server for Rust.
 
+![logo](../../../art/logo.png)
+
 exfiltrate provides a simple, self-contained and embeddable MCP server implementation,
 primarily motivated by the need to embed in debuggable programs.  It is designed to be
 easy to use, easy to extend, and easy to integrate with existing Rust codebases.
