@@ -2,19 +2,28 @@
 name = "exfiltrate"
 version = "0.1.0"
 edition = "2024"
+authors = ["Drew Crawford <drew@sealedabstract.com>"]
+description = "An embeddable MCP server for Rust."
+homepage = "https://sealedabstract.com/code/exfiltrate"
+repository = "https://github.com/drewcrawford/exfiltrate"
+license = "MIT OR Apache-2.0"
+keywords = ["mcp", "websocket", "http", "agents", "claude"]
+categories = ["development-tools::debugging", "wasm","web-programming::http-server", "web-programming::websocket"]
+exclude = [".*"]
+rust-version = "1.85.0"
 
 [dependencies]
-serde = { version = "1.0", features= ["derive"] }
-serde_json = "1.0"
-thiserror = "2"
-logwise = { version = "0.3", optional = true }
-regex = {version = "1.11", optional=true}
+serde = { version = "1.0.219", features= ["derive"] }
+serde_json = "1.0.143"
+thiserror = "2.0.16"
+logwise = { version = "0.3.0", optional = true }
+regex = {version = "1.11.2", optional=true}
 # for websocket accept
-sha1 = { version = "0.10", optional = true}
-base64 = { version = "0.22", optional = true }
+sha1 = { version = "0.10.6", optional = true}
+base64 = { version = "0.22.1", optional = true }
 
 [dev-dependencies]
-logwise = "0.3"
+logwise = "0.3.0"
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
 web-time = "1.1"

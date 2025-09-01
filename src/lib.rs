@@ -1,8 +1,9 @@
 /*!
-An embeddable MCP server for writing custom tools to debug your program.
+An embeddable MCP server for Rust.
 
-exfiltrate provides a simple, self-contained and embeddable MCP server implementation that you can use
-to add custom tools to your program so that agents can debug it at runtime.
+exfiltrate provides a simple, self-contained and embeddable MCP server implementation,
+primarily motivated by the need to embed in debuggable programs.  It is designed to be
+easy to use, easy to extend, and easy to integrate with existing Rust codebases.
 
 exfiltrate is the answer to these frequently-asked questions:
 
