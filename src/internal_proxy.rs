@@ -99,7 +99,7 @@ pub struct InternalProxy {
     ///
     /// In practice, notifications are sent from the main thread on wasm,
     /// so we can't use a simple Mutex.
-    #[cfg(feature="logwise")]
+    #[cfg(feature = "logwise")]
     buffered_notification_sender: std::sync::mpsc::Sender<crate::jrpc::Notification>,
 
     /// Receiver for buffered notifications.
@@ -175,7 +175,7 @@ impl InternalProxy {
     fn new() -> Self {
         let (_sender, receiver) = std::sync::mpsc::channel();
         let m = InternalProxy {
-            #[cfg(feature="logwise")]
+            #[cfg(feature = "logwise")]
             buffered_notification_sender: _sender,
             buffered_notification_receiver: Mutex::new(receiver),
             bidirectional_proxy: Arc::new(OnceNonLock::new()),
@@ -277,7 +277,7 @@ impl InternalProxy {
     /// Panics if the internal channel is disconnected (should not happen in normal operation).
     ///
 
-    #[cfg(feature="logwise")]
+    #[cfg(feature = "logwise")]
     pub fn buffer_notification(&self, notification: crate::jrpc::Notification) {
         self.buffered_notification_sender
             .send(notification)

@@ -1,11 +1,10 @@
 use crate::bidirectional_proxy::{Error, ReadTransport, WriteTransport};
-use crate::transit::transit_proxy::{TransitProxy};
+use crate::transit::transit_proxy::TransitProxy;
 use base64::Engine;
 use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
-
 
 struct HTTPParser {
     buf: Vec<u8>,
@@ -190,20 +189,18 @@ impl HTTPParser {
 }
 
 #[derive(Debug)]
-pub (crate) struct WebsocketWriteStream {
+pub(crate) struct WebsocketWriteStream {
     tcp: TcpStream,
 }
 #[derive(Debug)]
-pub (crate) struct WebsocketReadStream {
+pub(crate) struct WebsocketReadStream {
     tcp: TcpStream,
     tcp_layer_buf: Vec<u8>,
 }
 
 impl WebsocketWriteStream {
     fn new(tcp: TcpStream) -> Self {
-        WebsocketWriteStream {
-            tcp,
-        }
+        WebsocketWriteStream { tcp }
     }
 }
 
@@ -221,7 +218,7 @@ impl WebsocketReadStream {
 /// This enum provides a unified interface for reading data from either WebSocket
 /// connections (which require frame parsing) or plain TCP streams.
 #[derive(Debug)]
-pub (crate) enum ReadWebSocketOrStream {
+pub(crate) enum ReadWebSocketOrStream {
     /// WebSocket connection requiring frame parsing
     WebSocket(WebsocketReadStream),
     /// Plain TCP stream connection
@@ -232,7 +229,7 @@ pub (crate) enum ReadWebSocketOrStream {
 /// This enum provides a unified interface for writing data to either WebSocket
 /// connections (which require frame encoding) or plain TCP streams.
 #[derive(Debug)]
-pub (crate) enum WriteWebSocketOrStream {
+pub(crate) enum WriteWebSocketOrStream {
     /// WebSocket connection requiring frame encoding
     WebSocket(WebsocketWriteStream),
     /// Plain TCP stream connection

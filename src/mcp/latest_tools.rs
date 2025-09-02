@@ -163,8 +163,7 @@ impl Tool for RunLatestTool {
             .unwrap_or_default();
 
         //convert to hashmap
-        let tool_arguments: HashMap<String, Value> =
-            tool_arguments.into_iter().collect();
+        let tool_arguments: HashMap<String, Value> = tool_arguments.into_iter().collect();
 
         let tool_params = ToolCallParams::new(tool_name, tool_arguments);
         let r = crate::mcp::tools::call_imp(tool_params);

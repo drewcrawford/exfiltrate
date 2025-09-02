@@ -510,7 +510,8 @@ impl SharedAccept {
                 #[cfg(feature = "logwise")]
                 LogProxy::current().reset();
             }
-            "exfiltrate/logwise/record" => {
+            "exfiltrate/logwise/record" =>
+            {
                 #[cfg(feature = "logwise")]
                 LogProxy::current().add_log(notification.params.unwrap().to_string())
             }

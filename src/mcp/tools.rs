@@ -195,7 +195,8 @@ pub trait Tool: Send + Sync {
 ///
 /// The collection is protected by a `RwLock` to allow concurrent reads and
 /// exclusive writes.
-pub(crate) static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| RwLock::new(vec![]));
+pub(crate) static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> =
+    LazyLock::new(|| RwLock::new(vec![]));
 
 /// Tools available in both proxy and target applications.
 ///
@@ -299,7 +300,7 @@ impl ToolInfo {
 ///     ),
 /// ]);
 /// ```
-#[derive(Debug, serde::Serialize, serde::Deserialize,Clone,PartialEq,Eq)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub struct InputSchema {
     /// The schema type (always "object" for tool parameters)
     r#type: String,
@@ -437,7 +438,7 @@ pub(crate) fn list_int() -> ToolList {
         .chain(SHARED_TOOLS.iter())
         .map(|tool| ToolInfo::from_tool(tool.as_ref()))
         .collect();
-    
+
     ToolList { tools: tool_infos }
 }
 
@@ -455,7 +456,7 @@ pub(crate) fn list_int() -> ToolList {
 /// A response containing the list of available tools
 pub(crate) fn list_process(request: Request) -> Response<ToolList> {
     let tool_list = list_int();
-    
+
     Response::new(tool_list, request.id)
 }
 
@@ -533,8 +534,7 @@ impl ToolCallParams {
 ///     "Result: 42".into(),
 /// ]);
 /// ```
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Default)]
 pub struct ToolCallResponse {
     /// The content returned by the tool
     pub(crate) content: Vec<ToolContent>,
@@ -649,7 +649,7 @@ impl ToolContent {
     ///
     /// * `Some(&str)` if the content is text
     /// * `None` for other content types (when added in the future)
-    #[cfg(feature="transit")]
+    #[cfg(feature = "transit")]
     pub(crate) fn as_str(&self) -> Option<&str> {
         match self {
             ToolContent::Text(text) => Some(text),
@@ -838,13 +838,20 @@ impl std::hash::Hash for ToolCallResponse {
     }
 }
 
-
 impl fmt::Display for ToolCallResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_error {
-            write!(f, "ToolCallResponse(Error): {}", format_content(&self.content))
+            write!(
+                f,
+                "ToolCallResponse(Error): {}",
+                format_content(&self.content)
+            )
         } else {
-            write!(f, "ToolCallResponse(Success): {}", format_content(&self.content))
+            write!(
+                f,
+                "ToolCallResponse(Success): {}",
+                format_content(&self.content)
+            )
         }
     }
 }
@@ -924,8 +931,13 @@ impl Default for InputSchema {
 
 impl fmt::Display for InputSchema {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "InputSchema(type: {}, properties: {}, required: {:?})", 
-               self.r#type, self.properties.len(), self.required)
+        write!(
+            f,
+            "InputSchema(type: {}, properties: {}, required: {:?})",
+            self.r#type,
+            self.properties.len(),
+            self.required
+        )
     }
 }
 
@@ -937,7 +949,11 @@ impl fmt::Display for Argument {
             "{}: {} ({}) - {}",
             self.name,
             self.r#type,
-            if self.required { "required" } else { "optional" },
+            if self.required {
+                "required"
+            } else {
+                "optional"
+            },
             self.description
         )
     }

@@ -47,11 +47,11 @@ impl Tool for HelloTool {
     fn name(&self) -> &str {
         "hello"
     }
-    
+
     fn description(&self) -> &str {
         "Greets a user by name"
     }
-    
+
     fn input_schema(&self) -> InputSchema {
         InputSchema::new(vec![
             Argument::new(
@@ -62,13 +62,13 @@ impl Tool for HelloTool {
             ),
         ])
     }
-    
-    fn call(&self, params: HashMap<String, serde_json::Value>) 
+
+    fn call(&self, params: HashMap<String, serde_json::Value>)
         -> Result<ToolCallResponse, ToolCallError> {
         let name = params.get("name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolCallError::new(vec!["Missing name parameter".into()]))?;
-        
+
         Ok(ToolCallResponse::new(vec![
             format!("Hello, {}!", name).into()
         ]))
@@ -130,7 +130,7 @@ struct SafeTool;
 impl Tool for SafeTool {
     fn name(&self) -> &str { "safe_divide" }
     fn description(&self) -> &str { "Safely divides two numbers" }
-    
+
     fn input_schema(&self) -> exfiltrate::mcp::tools::InputSchema {
         use exfiltrate::mcp::tools::{InputSchema, Argument};
         InputSchema::new(vec![
@@ -138,25 +138,25 @@ impl Tool for SafeTool {
             Argument::new("divisor".into(), "number".into(), "Number to divide by".into(), true),
         ])
     }
-    
-    fn call(&self, params: HashMap<String, serde_json::Value>) 
+
+    fn call(&self, params: HashMap<String, serde_json::Value>)
         -> Result<ToolCallResponse, ToolCallError> {
         // Validate and extract parameters with clear error messages
         let dividend = params.get("dividend")
             .ok_or_else(|| ToolCallError::new(vec!["Missing 'dividend' parameter".into()]))?
             .as_f64()
             .ok_or_else(|| ToolCallError::new(vec!["'dividend' must be a number".into()]))?;
-            
+
         let divisor = params.get("divisor")
             .ok_or_else(|| ToolCallError::new(vec!["Missing 'divisor' parameter".into()]))?
             .as_f64()
             .ok_or_else(|| ToolCallError::new(vec!["'divisor' must be a number".into()]))?;
-        
+
         // Check for division by zero
         if divisor == 0.0 {
             return Err(ToolCallError::new(vec!["Cannot divide by zero".into()]));
         }
-        
+
         let result = dividend / divisor;
         Ok(ToolCallResponse::new(vec![format!("{}", result).into()]))
     }
@@ -228,4 +228,3 @@ mod once_nonlock;
 mod sys;
 #[cfg(feature = "transit")]
 pub mod transit;
-

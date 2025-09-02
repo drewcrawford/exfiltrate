@@ -532,11 +532,7 @@ impl BidirectionalProxy {
     pub fn send(&self, data: &[u8]) -> Result<(), Error> {
         self.data_sender
             .send(data.to_vec().into_boxed_slice())
-            .map_err(|_| {
-                Error::IoError(std::io::Error::other(
-                    "Failed to send data to proxy",
-                ))
-            })?;
+            .map_err(|_| Error::IoError(std::io::Error::other("Failed to send data to proxy")))?;
         Ok(())
     }
 }
