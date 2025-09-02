@@ -363,6 +363,7 @@ impl WebsocketReadStream {
 /// # // In real usage: std::thread::park();
 /// # }
 /// ```
+#[derive(Debug)]
 pub struct Server {}
 
 /// Queue for sending Server-Sent Events (SSE) messages to connected clients.
@@ -556,7 +557,7 @@ impl Server {
     ///
     /// # Example
     /// ```no_run
-    /// # // don't run in doctests
+    /// // ALLOW_NORUN_DOCTEST: Server binds to network port and runs indefinitely
     /// # #[cfg(feature = "transit")]
     /// # {
     /// use exfiltrate::transit::{transit_proxy::TransitProxy, http::Server};
