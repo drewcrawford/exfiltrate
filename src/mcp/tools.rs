@@ -24,7 +24,7 @@
 //! ## Implementing a custom tool
 //!
 //! ```
-//! use exfiltrate::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
+//! use exfiltrate::mcp::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
 //! use std::collections::HashMap;
 //!
 //! struct CalculatorTool;
@@ -93,7 +93,7 @@
 //! }
 //!
 //! // Register and use the tool
-//! exfiltrate::tools::add_tool(Box::new(CalculatorTool));
+//! exfiltrate::mcp::tools::add_tool(Box::new(CalculatorTool));
 //! ```
 
 use crate::internal_proxy::InternalProxy;
@@ -116,7 +116,7 @@ use std::sync::{LazyLock, RwLock};
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
+/// use exfiltrate::mcp::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
 /// use std::collections::HashMap;
 ///
 /// struct EchoTool;
@@ -215,7 +215,7 @@ pub static SHARED_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::ToolList;
+/// use exfiltrate::mcp::tools::ToolList;
 ///
 /// let empty_list = ToolList::empty();
 /// // The list is created empty
@@ -234,7 +234,7 @@ impl ToolList {
     /// # Examples
     ///
     /// ```
-    /// use exfiltrate::tools::ToolList;
+    /// use exfiltrate::mcp::tools::ToolList;
     ///
     /// let list = ToolList::empty();
     /// // Verify it serializes as an empty list
@@ -282,7 +282,7 @@ impl ToolInfo {
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::{InputSchema, Argument};
+/// use exfiltrate::mcp::tools::{InputSchema, Argument};
 ///
 /// let schema = InputSchema::new(vec![
 ///     Argument::new(
@@ -316,7 +316,7 @@ pub struct InputSchema {
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::Argument;
+/// use exfiltrate::mcp::tools::Argument;
 ///
 /// let arg = Argument::new(
 ///     "filename".to_string(),
@@ -349,7 +349,7 @@ impl Argument {
     /// # Examples
     ///
     /// ```
-    /// use exfiltrate::tools::Argument;
+    /// use exfiltrate::mcp::tools::Argument;
     ///
     /// let required_arg = Argument::new(
     ///     "input".to_string(),
@@ -388,7 +388,7 @@ impl InputSchema {
     /// # Examples
     ///
     /// ```
-    /// use exfiltrate::tools::{InputSchema, Argument};
+    /// use exfiltrate::mcp::tools::{InputSchema, Argument};
     ///
     /// let schema = InputSchema::new(vec![
     ///     Argument::new(
@@ -470,7 +470,7 @@ pub(crate) fn list_process(request: Request) -> Response<ToolList> {
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::{Tool, InputSchema, ToolCallResponse, ToolCallError, add_tool};
+/// use exfiltrate::mcp::tools::{Tool, InputSchema, ToolCallResponse, ToolCallError, add_tool};
 /// use std::collections::HashMap;
 ///
 /// struct MyTool;
@@ -525,7 +525,7 @@ impl ToolCallParams {
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::ToolCallResponse;
+/// use exfiltrate::mcp::tools::ToolCallResponse;
 ///
 /// let response = ToolCallResponse::new(vec![
 ///     "Operation completed successfully".into(),
@@ -550,7 +550,7 @@ impl ToolCallResponse {
     /// # Examples
     ///
     /// ```
-    /// use exfiltrate::tools::ToolCallResponse;
+    /// use exfiltrate::mcp::tools::ToolCallResponse;
     ///
     /// let response = ToolCallResponse::new(vec![
     ///     "Task completed".into(),
@@ -571,7 +571,7 @@ impl ToolCallResponse {
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::ToolCallError;
+/// use exfiltrate::mcp::tools::ToolCallError;
 ///
 /// let error = ToolCallError::new(vec![
 ///     "Invalid input: missing required parameter 'filename'".into(),
@@ -595,7 +595,7 @@ impl ToolCallError {
     /// # Examples
     ///
     /// ```
-    /// use exfiltrate::tools::ToolCallError;
+    /// use exfiltrate::mcp::tools::ToolCallError;
     ///
     /// let error = ToolCallError::new(vec![
     ///     "Database connection failed".into(),
@@ -628,7 +628,7 @@ impl ToolCallError {
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::ToolContent;
+/// use exfiltrate::mcp::tools::ToolContent;
 ///
 /// let text_content = ToolContent::from("Hello, world!");
 /// let string_content = ToolContent::from(String::from("Dynamic content"));
