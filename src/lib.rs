@@ -79,33 +79,6 @@ impl Tool for HelloTool {
 exfiltrate::tools::add_tool(Box::new(HelloTool));
 ```
 
-## Processing MCP Requests
-
-```
-use exfiltrate::mcp;
-use exfiltrate::jrpc::{Request, Response};
-use serde_json::json;
-
-// Handle an incoming MCP request
-let request = Request {
-    jsonrpc: "2.0".to_string(),
-    method: "tools/call".to_string(),
-    params: Some(json!({
-        "name": "hello",
-        "arguments": { "name": "World" }
-    })),
-    id: json!(1),
-};
-
-// Dispatch to the MCP handler
-let response = mcp::dispatch_in_target(request);
-
-// Check the response
-match response.result {
-    Some(result) => println!("Tool executed successfully"),
-    None => println!("Tool execution failed: {:?}", response.error),
-}
-```
 
 ## Starting a Transit Proxy
 
@@ -238,7 +211,6 @@ with threads. Threads for everyone.
 
 # Module Organization
 
-- [`jrpc`] - JSON-RPC 2.0 protocol implementation
 - [`mcp`] - Model Context Protocol core implementation
 - [`tools`] - Tool trait and management system (re-exported from [`mcp::tools`])
 - [`messages`] - Inter-component message types
@@ -248,7 +220,7 @@ with threads. Threads for everyone.
 */
 mod bidirectional_proxy;
 mod internal_proxy;
-pub mod jrpc;
+mod jrpc;
 mod logging;
 #[cfg(feature = "logwise")]
 pub mod logwise;

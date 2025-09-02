@@ -37,23 +37,6 @@
 //!
 //! ## Dispatching MCP requests
 //!
-//! ```
-//! use exfiltrate::jrpc::{Request, Response};
-//! use exfiltrate::mcp;
-//! use serde_json::json;
-//!
-//! // Create a request to list available tools
-//! let request = Request {
-//!     jsonrpc: "2.0".to_string(),
-//!     method: "tools/list".to_string(),
-//!     params: None,
-//!     id: json!(1),
-//! };
-//!
-//! // Dispatch the request in the target application
-//! let response = mcp::dispatch_in_target(request);
-//! assert!(response.error.is_none() || response.result.is_some());
-//! ```
 //!
 //! ## Registering custom tools
 //!
@@ -93,16 +76,6 @@
 //! // Register the tool
 //! exfiltrate::tools::add_tool(Box::new(MyCustomTool));
 //!
-//! // Verify it was added
-//! let request = exfiltrate::jrpc::Request {
-//!     jsonrpc: "2.0".to_string(),
-//!     method: "tools/list".to_string(),
-//!     params: None,
-//!     id: serde_json::json!(1),
-//! };
-//! let response = exfiltrate::mcp::dispatch_in_target(request);
-//! // The tool list will include our custom tool
-//! assert!(response.result.is_some());
 //! ```
 
 use crate::jrpc::{Request, Response};
@@ -127,24 +100,6 @@ pub mod tools;
 ///
 /// A JSON-RPC response containing either the result of the operation or an error
 ///
-/// # Examples
-///
-/// ```
-/// use exfiltrate::jrpc::Request;
-/// use exfiltrate::mcp;
-/// use serde_json::json;
-///
-/// let request = Request {
-///     jsonrpc: "2.0".to_string(),
-///     method: "tools/list".to_string(),
-///     params: None,
-///     id: json!("req-1"),
-/// };
-///
-/// let response = mcp::dispatch_in_target(request);
-/// // Either we get a result or an error, not both
-/// assert!(response.result.is_some() != response.error.is_some());
-/// ```
 pub fn dispatch_in_target(request: Request) -> Response<serde_json::Value> {
     if request.method == "tools/list" {
         tools::list_process(request).erase()

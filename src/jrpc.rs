@@ -26,124 +26,6 @@
 //! - Optional parameters (`params` field)
 //! - An identifier (`id` field) for requests/responses (absent for notifications)
 //!
-//! # Examples
-//!
-//! ## Creating and handling a request
-//!
-//! ```
-//! use exfiltrate::jrpc::{Request, Response, Error};
-//! use serde_json::json;
-//!
-//! // Create a request
-//! let request = Request {
-//!     jsonrpc: "2.0".to_string(),
-//!     method: "add".to_string(),
-//!     params: Some(json!([2, 3])),
-//!     id: json!(1),
-//! };
-//!
-//! // Serialize for transmission
-//! let serialized = serde_json::to_string(&request).unwrap();
-//! assert!(serialized.contains("\"method\":\"add\""));
-//!
-//! // Process the request and create a response
-//! let result = 5; // Actual processing would happen here
-//! let response = Response::new(json!(result), request.id.clone());
-//! assert_eq!(response.result, Some(json!(5)));
-//!
-//! // Or return an error
-//! let error_response: Response<serde_json::Value> = Response::err(
-//!     Error::invalid_params("Expected two numbers".to_string()),
-//!     request.id
-//! );
-//! assert!(error_response.error.is_some());
-//! ```
-//!
-//! ## Sending notifications
-//!
-//! ```
-//! use exfiltrate::jrpc::Notification;
-//! use serde_json::json;
-//!
-//! // Create a notification (no response expected)
-//! let notification = Notification::new(
-//!     "log".to_string(),
-//!     Some(json!({"level": "info", "message": "System started"}))
-//! );
-//!
-//! // Notifications can be serialized and sent without expecting a response
-//! let serialized = serde_json::to_string(&notification).unwrap();
-//! assert!(serialized.contains("\"method\":\"log\""));
-//! assert!(!serialized.contains("\"id\"")); // No id field in notifications
-//! ```
-//!
-//! ## Batch operations
-//!
-//! ```
-//! use exfiltrate::jrpc::{Request, Notification};
-//! use serde_json::json;
-//!
-//! // JSON-RPC 2.0 supports batch operations by sending arrays
-//! let batch = vec![
-//!     json!(Request {
-//!         jsonrpc: "2.0".to_string(),
-//!         method: "get_user".to_string(),
-//!         params: Some(json!({"id": 123})),
-//!         id: json!(1),
-//!     }),
-//!     json!(Notification::new(
-//!         "log".to_string(),
-//!         Some(json!({"action": "user_query"}))
-//!     )),
-//! ];
-//!
-//! let batch_json = serde_json::to_string(&batch).unwrap();
-//! assert!(batch_json.starts_with('['));
-//! ```
-//!
-//! ## Error handling patterns
-//!
-//! ```
-//! use exfiltrate::jrpc::{Request, Response, Error};
-//! use serde_json::json;
-//!
-//! fn handle_request(request: Request) -> Response<serde_json::Value> {
-//!     match request.method.as_str() {
-//!         "echo" => {
-//!             // Echo back the params
-//!             Response::new(request.params.unwrap_or(json!(null)), request.id)
-//!         }
-//!         "divide" => {
-//!             // Validate params and handle errors
-//!             let params = match request.params {
-//!                 Some(p) => p,
-//!                 None => return Response::err(
-//!                     Error::invalid_params("Missing parameters".to_string()),
-//!                     request.id
-//!                 ),
-//!             };
-//!             
-//!             // Further processing...
-//!             Response::new(json!({"result": "calculated"}), request.id)
-//!         }
-//!         _ => {
-//!             // Unknown method
-//!             Response::err(Error::method_not_found(), request.id)
-//!         }
-//!     }
-//! }
-//!
-//! let request = Request {
-//!     jsonrpc: "2.0".to_string(),
-//!     method: "unknown".to_string(),
-//!     params: None,
-//!     id: json!(42),
-//! };
-//!
-//! let response = handle_request(request);
-//! assert!(response.error.is_some());
-//! assert_eq!(response.error.unwrap().code, -32601);
-//! ```
 
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
@@ -160,69 +42,6 @@ use std::fmt::{Display, Formatter};
 /// * `params` - Optional parameters for the method (can be an array or object)
 /// * `id` - Unique identifier for this request (string, number, or null)
 ///
-/// # Examples
-///
-/// ## Basic request without parameters
-///
-/// ```
-/// use exfiltrate::jrpc::Request;
-/// use serde_json::json;
-///
-/// let request = Request {
-///     jsonrpc: "2.0".to_string(),
-///     method: "tools/list".to_string(),
-///     params: None,
-///     id: json!("unique-id-123"),
-/// };
-///
-/// // Serialize to JSON for transmission
-/// let json_str = serde_json::to_string(&request).unwrap();
-/// assert!(json_str.contains("\"jsonrpc\":\"2.0\""));
-/// ```
-///
-/// ## Request with array parameters
-///
-/// ```
-/// use exfiltrate::jrpc::Request;
-/// use serde_json::json;
-///
-/// let request = Request {
-///     jsonrpc: "2.0".to_string(),
-///     method: "subtract".to_string(),
-///     params: Some(json!([42, 23])),
-///     id: json!(1),
-/// };
-///
-/// assert_eq!(request.params, Some(json!([42, 23])));
-/// ```
-///
-/// ## Request with object parameters
-///
-/// ```
-/// use exfiltrate::jrpc::Request;
-/// use serde_json::json;
-///
-/// let request = Request {
-///     jsonrpc: "2.0".to_string(),
-///     method: "user/update".to_string(),
-///     params: Some(json!({
-///         "id": 123,
-///         "name": "Alice",
-///         "email": "alice@example.com"
-///     })),
-///     id: json!("req-456"),
-/// };
-///
-/// // Deserialize from JSON
-/// let json_str = r#"{
-///     "jsonrpc": "2.0",
-///     "method": "ping",
-///     "id": 99
-/// }"#;
-/// let deserialized: Request = serde_json::from_str(json_str).unwrap();
-/// assert_eq!(deserialized.method, "ping");
-/// assert_eq!(deserialized.id, json!(99));
-/// ```
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Request {
     /// The JSON-RPC protocol version (must be "2.0")
@@ -244,29 +63,6 @@ impl Request {
     /// * `params` - Optional parameters for the method call
     /// * `id` - Unique identifier for this request
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Request;
-    /// use serde_json::json;
-    ///
-    /// // Simple request without parameters
-    /// let request = Request::new(
-    ///     "ping".to_string(),
-    ///     None,
-    ///     json!(1)
-    /// );
-    /// assert_eq!(request.jsonrpc, "2.0");
-    /// assert_eq!(request.method, "ping");
-    ///
-    /// // Request with parameters
-    /// let request_with_params = Request::new(
-    ///     "calculate".to_string(),
-    ///     Some(json!({"x": 10, "y": 20})),
-    ///     json!("calc-123")
-    /// );
-    /// assert!(request_with_params.params.is_some());
-    /// ```
     pub fn new(method: String, params: Option<serde_json::Value>, id: serde_json::Value) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -289,21 +85,6 @@ impl Request {
 /// * `method` - The name of the method to be invoked
 /// * `params` - Optional parameters for the method (can be an array or object)
 ///
-/// # Examples
-///
-/// ```
-/// use exfiltrate::jrpc::Notification;
-/// use serde_json::json;
-///
-/// // Create a notification for logging
-/// let log_notification = Notification::new(
-///     "log".to_string(),
-///     Some(json!({"level": "error", "message": "Connection failed"}))
-/// );
-///
-/// // Create a notification without parameters
-/// let heartbeat = Notification::new("heartbeat".to_string(), None);
-/// ```
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct Notification {
     /// The JSON-RPC protocol version (must be "2.0")
@@ -322,20 +103,6 @@ impl Notification {
     /// * `method` - The name of the method to invoke
     /// * `params` - Optional parameters for the method call
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Notification;
-    /// use serde_json::json;
-    ///
-    /// let notification = Notification::new(
-    ///     "status_update".to_string(),
-    ///     Some(json!({"status": "running", "progress": 50}))
-    /// );
-    ///
-    /// assert_eq!(notification.jsonrpc, "2.0");
-    /// assert_eq!(notification.method, "status_update");
-    /// ```
     pub fn new(method: String, params: Option<serde_json::Value>) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -361,62 +128,6 @@ impl Notification {
 /// * `error` - Error information (present on failure)
 /// * `id` - The same id that was in the corresponding request
 ///
-/// # Examples
-///
-/// ## Creating successful responses
-///
-/// ```
-/// use exfiltrate::jrpc::{Response, Error};
-/// use serde_json::json;
-///
-/// // Create a successful response with JSON value
-/// let success_response = Response::new(json!({"status": "ok"}), json!(1));
-/// assert!(success_response.result.is_some());
-/// assert!(success_response.error.is_none());
-///
-/// // Create a typed response
-/// let typed_response: Response<i32> = Response::new(42, json!("req-123"));
-/// assert_eq!(typed_response.result, Some(42));
-/// ```
-///
-/// ## Creating error responses
-///
-/// ```
-/// use exfiltrate::jrpc::{Response, Error};
-/// use serde_json::json;
-///
-/// // Create an error response
-/// let error_response: Response<serde_json::Value> = Response::err(
-///     Error::method_not_found(),
-///     json!(2)
-/// );
-/// assert!(error_response.result.is_none());
-/// assert!(error_response.error.is_some());
-/// assert_eq!(error_response.error.as_ref().unwrap().code, -32601);
-/// ```
-///
-/// ## Serialization and deserialization
-///
-/// ```
-/// use exfiltrate::jrpc::Response;
-/// use serde_json::json;
-///
-/// let response = Response::new(json!(["item1", "item2"]), json!(99));
-///
-/// // Serialize to JSON
-/// let json_str = serde_json::to_string(&response).unwrap();
-/// assert!(json_str.contains("\"result\""));
-/// assert!(!json_str.contains("\"error\"")); // error field is omitted when None
-///
-/// // Deserialize from JSON
-/// let json_str = r#"{
-///     "jsonrpc": "2.0",
-///     "result": 19,
-///     "id": 1
-/// }"#;
-/// let deserialized: Response<i32> = serde_json::from_str(json_str).unwrap();
-/// assert_eq!(deserialized.result, Some(19));
-/// ```
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Response<R> {
     /// The JSON-RPC protocol version (must be "2.0")
@@ -439,16 +150,6 @@ impl<R> Response<R> {
     /// * `result` - The successful result of the method call
     /// * `id` - The request identifier to include in the response
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Response;
-    /// use serde_json::json;
-    ///
-    /// let response = Response::new(42, json!("request-123"));
-    /// assert!(response.result.is_some());
-    /// assert!(response.error.is_none());
-    /// ```
     pub fn new(result: R, id: serde_json::Value) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -465,19 +166,6 @@ impl<R> Response<R> {
     /// * `e` - The error that occurred
     /// * `id` - The request identifier to include in the response
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::{Response, Error};
-    /// use serde_json::json;
-    ///
-    /// let response: Response<String> = Response::err(
-    ///     Error::invalid_params("Missing required field".to_string()),
-    ///     json!(123)
-    /// );
-    /// assert!(response.result.is_none());
-    /// assert!(response.error.is_some());
-    /// ```
     pub fn err(e: Error, id: serde_json::Value) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -498,39 +186,6 @@ impl<R> Response<R> {
     /// Panics if the result cannot be serialized to JSON. This should only happen
     /// if the type contains non-serializable fields.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::{Response, Error};
-    /// use serde_json::json;
-    ///
-    /// #[derive(serde::Serialize)]
-    /// struct CustomResult {
-    ///     value: i32,
-    ///     message: String,
-    /// }
-    ///
-    /// // Type erasure for successful response
-    /// let typed_response = Response::new(
-    ///     CustomResult { value: 42, message: "Success".to_string() },
-    ///     json!(1)
-    /// );
-    /// let erased_response = typed_response.erase();
-    /// // erased_response is now Response<serde_json::Value>
-    /// assert_eq!(
-    ///     erased_response.result.as_ref().unwrap()["value"],
-    ///     json!(42)
-    /// );
-    ///
-    /// // Type erasure preserves error responses
-    /// let error_response: Response<CustomResult> = Response::err(
-    ///     Error::invalid_params("Bad input".to_string()),
-    ///     json!(2)
-    /// );
-    /// let erased_error = error_response.erase();
-    /// assert!(erased_error.error.is_some());
-    /// assert_eq!(erased_error.error.as_ref().unwrap().code, -32602);
-    /// ```
     pub fn erase(self) -> Response<serde_json::Value>
     where
         R: Serialize,
@@ -564,20 +219,6 @@ impl<R> Response<R> {
 /// * `message` - A string providing a short description of the error
 /// * `data` - Optional additional information about the error
 ///
-/// # Examples
-///
-/// ```
-/// use exfiltrate::jrpc::Error;
-///
-/// // Create a standard error
-/// let error = Error::method_not_found();
-/// assert_eq!(error.code, -32601);
-///
-/// // Create an error with additional details
-/// let detailed_error = Error::invalid_params("Expected an array".to_string());
-/// assert_eq!(detailed_error.code, -32602);
-/// assert!(detailed_error.data.is_some());
-/// ```
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Error {
     /// Error code as defined in JSON-RPC 2.0 specification
@@ -608,19 +249,6 @@ impl Error {
     /// * `message` - Human-readable error message
     /// * `data` - Optional additional error information
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Error;
-    /// use serde_json::json;
-    ///
-    /// let custom_error = Error::new(
-    ///     -32050,
-    ///     "Database connection failed".to_string(),
-    ///     Some(json!({"retry_after": 5}))
-    /// );
-    /// assert_eq!(custom_error.code, -32050);
-    /// ```
     pub fn new(code: i32, message: String, data: Option<serde_json::Value>) -> Self {
         Self {
             code,
@@ -633,15 +261,6 @@ impl Error {
     ///
     /// This error should be returned when invalid JSON was received by the server.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Error;
-    ///
-    /// let error = Error::parse_error();
-    /// assert_eq!(error.code, -32700);
-    /// assert_eq!(error.message, "Parse error");
-    /// ```
     pub fn parse_error() -> Self {
         Self {
             code: -32700,
@@ -654,15 +273,6 @@ impl Error {
     ///
     /// This error should be returned when the JSON sent is not a valid Request object.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Error;
-    ///
-    /// let error = Error::invalid_request();
-    /// assert_eq!(error.code, -32600);
-    /// assert_eq!(error.message, "Invalid Request");
-    /// ```
     pub fn invalid_request() -> Self {
         Self {
             code: -32600,
@@ -676,24 +286,6 @@ impl Error {
     /// This error should be returned when the requested method does not exist
     /// or is not available.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::{Request, Response, Error};
-    /// use serde_json::json;
-    ///
-    /// let request = Request::new(
-    ///     "non_existent_method".to_string(),
-    ///     None,
-    ///     json!(1)
-    /// );
-    ///
-    /// // Return method not found error
-    /// let response: Response<serde_json::Value> = Response::err(
-    ///     Error::method_not_found(),
-    ///     request.id
-    /// );
-    /// ```
     pub fn method_not_found() -> Self {
         Self {
             code: -32601, // Method not found
@@ -711,19 +303,6 @@ impl Error {
     ///
     /// * `detail` - Additional information about what was invalid
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Error;
-    ///
-    /// let error = Error::invalid_params(
-    ///     "Expected 2 parameters, got 3".to_string()
-    /// );
-    /// assert_eq!(error.code, -32602);
-    /// assert_eq!(error.data, Some(serde_json::Value::String(
-    ///     "Expected 2 parameters, got 3".to_string()
-    /// )));
-    /// ```
     pub fn invalid_params(detail: String) -> Self {
         Self {
             code: -32602, // Invalid params
@@ -741,14 +320,6 @@ impl Error {
     ///
     /// * `name` - The name of the unknown tool
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Error;
-    ///
-    /// let error = Error::unknown_tool("undefined_tool".to_string());
-    /// assert_eq!(error.message, "Unknown tool: undefined_tool");
-    /// ```
     pub fn unknown_tool(name: String) -> Self {
         Self {
             code: -32602, // Invalid params
@@ -767,17 +338,6 @@ impl Error {
     ///
     /// * `error` - Any error that implements `std::error::Error`
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Error;
-    /// use std::io;
-    ///
-    /// let io_error = io::Error::new(io::ErrorKind::NotFound, "File not found");
-    /// let jrpc_error = Error::from_error(io_error);
-    /// assert_eq!(jrpc_error.code, -32603);
-    /// assert_eq!(jrpc_error.message, "File not found");
-    /// ```
     pub fn from_error<E: std::error::Error>(error: E) -> Self {
         Self {
             code: -32603, // Internal error
@@ -795,15 +355,6 @@ impl Error {
     ///
     /// * `message` - Description of the internal error
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use exfiltrate::jrpc::Error;
-    ///
-    /// let error = Error::internal_error("Database connection lost".to_string());
-    /// assert_eq!(error.code, -32603);
-    /// assert_eq!(error.message, "Database connection lost");
-    /// ```
     pub fn internal_error(message: String) -> Self {
         Self {
             code: -32603,
