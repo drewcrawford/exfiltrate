@@ -255,7 +255,7 @@ async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
                             }
                         }
                     }
-                    Some(socket) => {
+                    Some(..) => {
                         //we already have a socket so nothing to do I guess?
                     }
                 }

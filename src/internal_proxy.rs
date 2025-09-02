@@ -52,6 +52,7 @@ mod websocket_adapter;
 use crate::bidirectional_proxy::BidirectionalProxy;
 use crate::internal_proxy::Error::NotConnected;
 use crate::once_nonlock::OnceNonLock;
+#[cfg(not(target_arch = "wasm32"))]
 use std::net::TcpStream;
 use std::sync::{Arc, LazyLock, Mutex};
 

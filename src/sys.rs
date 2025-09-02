@@ -63,45 +63,6 @@
 //! Always import time and thread APIs through this module rather than directly
 //! from std or platform-specific crates. This ensures your code remains portable:
 
-/// Platform-appropriate time API.
-///
-/// Re-exports the appropriate time implementation based on the target platform:
-/// - Native platforms: `std::time`
-/// - WebAssembly: `web_time` (browser-compatible)
-///
-/// # Available Types
-///
-/// The following types are available through this module:
-/// - `Duration` - A span of time
-/// - `Instant` - A measurement of monotonic time
-/// - `SystemTime` - A measurement of system/wall-clock time (native only)
-///
-/// # Examples
-///
-/// ```
-/// # mod sys {
-/// #     pub use std::time;
-/// # }
-/// use sys::time::{Duration, Instant};
-///
-/// // Measure elapsed time
-/// let start = Instant::now();
-/// // ... do some work ...
-/// let elapsed = start.elapsed();
-///
-/// // Create durations
-/// let timeout = Duration::from_secs(5);
-/// let delay = Duration::from_millis(100);
-/// ```
-///
-/// # Platform Differences
-///
-/// While the API is consistent, there are some behavioral differences:
-/// - **Resolution**: Browser time may have lower resolution due to security mitigations
-/// - **SystemTime**: Not available in WASM environments
-/// - **Monotonicity**: Guaranteed on both platforms but implementation differs
-#[cfg(target_arch = "wasm32")]
-pub use web_time as time;
 
 /// Platform-appropriate threading API.
 ///

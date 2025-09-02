@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 keywords = ["mcp", "websocket", "http", "agents", "claude"]
 categories = ["development-tools::debugging", "wasm","web-programming::http-server", "web-programming::websocket"]
 exclude = [".*"]
-rust-version = "1.85.0"
+rust-version = "1.85.1"
 
 [dependencies]
 serde = { version = "1.0.219", features= ["derive"] }
@@ -26,7 +26,6 @@ base64 = { version = "0.22.1", optional = true }
 logwise = "0.3.0"
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
-web-time = "1.1"
 wasm_thread = "0.3"
 web-sys = {version = "0.3", features = [
     "WebSocket",

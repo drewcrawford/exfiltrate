@@ -586,7 +586,7 @@ impl<T> OnceNonLock<T> {
     /// }).await;
     /// ```
     #[cfg(target_arch = "wasm32")]
-    pub fn init_async<F>(self: &Arc<Self>, f: F) -> impl Future<Output = ()> + use<F, T>
+    pub fn init_async<F>(self: &std::sync::Arc<Self>, f: F) -> impl Future<Output = ()> + use<F, T>
     where
         F: AsyncFnOnce() -> Option<T>,
     {
