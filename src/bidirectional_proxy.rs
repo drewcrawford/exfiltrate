@@ -117,7 +117,7 @@ pub trait ReadTransport: Send + 'static + Debug {
     /// # Arguments
     ///
     /// * `buf` - Buffer to read data into. The size of this buffer determines
-    ///           the maximum number of bytes that can be read in one call.
+    ///   the maximum number of bytes that can be read in one call.
     ///
     /// # Returns
     ///
@@ -398,7 +398,7 @@ impl BidirectionalProxy {
     /// * `write` - Transport for sending data. Must implement `WriteTransport`.
     /// * `read` - Transport for receiving data. Must implement `ReadTransport`.
     /// * `recv` - Callback function to process incoming messages.
-    ///            Returns `Some(response)` to send a response, or `None` for no response.
+    ///   Returns `Some(response)` to send a response, or `None` for no response.
     ///
     /// # Type Parameters
     ///
@@ -413,7 +413,6 @@ impl BidirectionalProxy {
     ///
     /// # Example
     ///
-
     pub fn new<F, W, R>(write: W, read: R, recv: F) -> Self
     where
         F: Fn(Box<[u8]>) -> Option<Box<[u8]>> + Send + 'static,
@@ -530,13 +529,11 @@ impl BidirectionalProxy {
     ///
     /// The message will be automatically prefixed with its length (4 bytes,
     /// little-endian) before transmission.
-
     pub fn send(&self, data: &[u8]) -> Result<(), Error> {
         self.data_sender
             .send(data.to_vec().into_boxed_slice())
             .map_err(|_| {
-                Error::IoError(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Error::IoError(std::io::Error::other(
                     "Failed to send data to proxy",
                 ))
             })?;

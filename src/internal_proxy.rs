@@ -74,7 +74,7 @@ pub enum Error {
 ///
 /// This static instance is lazily initialized on first access and remains
 /// alive for the duration of the program.
-static INTERNAL_PROXY: LazyLock<InternalProxy> = LazyLock::new(|| InternalProxy::new());
+static INTERNAL_PROXY: LazyLock<InternalProxy> = LazyLock::new(InternalProxy::new);
 
 /// Internal proxy for handling JSON-RPC communication.
 ///
@@ -209,7 +209,7 @@ impl InternalProxy {
                     );
                     Some(stream)
                 }
-                Err(_e) => return None,
+                Err(_e) => None,
             }
         });
         #[cfg(target_arch = "wasm32")]
@@ -251,7 +251,6 @@ impl InternalProxy {
     /// * `Ok(())` - If the notification was successfully sent
     /// * `Err(Error::NotConnected)` - If no connection is available
     ///
-
     pub fn send_notification(&self, notification: crate::jrpc::Notification) -> Result<(), Error> {
         self.send_buffered_if_possible();
         if let Some(proxy) = self.bidirectional_proxy.get() {
@@ -301,12 +300,12 @@ impl InternalProxy {
         if let Some(proxy) = self.bidirectional_proxy.get() {
             //short lock
             let mut take = Vec::new();
-            if let Some(buffered_receiver) = self.buffered_notification_receiver.try_lock().ok() {
-                while let Some(notification) = buffered_receiver.try_recv().ok() {
+            if let Ok(buffered_receiver) = self.buffered_notification_receiver.try_lock() {
+                while let Ok(notification) = buffered_receiver.try_recv() {
                     take.push(notification);
                 }
             } else {
-                crate::logging::log(&"ip: Send contended");
+                crate::logging::log("ip: Send contended");
             }
             for notification in take {
                 let msg = serde_json::to_string(&notification).unwrap();

@@ -448,7 +448,7 @@ impl<T> OnceNonLock<T> {
     /// # Arguments
     ///
     /// * `f` - A closure that returns `Option<T>`. Called only if the cell is uninitialized.
-    ///         Returning `None` allows initialization to be retried later.
+    ///   Returning `None` allows initialization to be retried later.
     ///
     /// # Returns
     ///
@@ -743,7 +743,6 @@ impl<T> Drop for OnceNonLock<T> {
         match self.once.load(Ordering::Relaxed) {
             ONCE_INITIAL => {
                 // Nothing to drop, value was never initialized
-                return;
             }
             ONCE_IN_PROGRESS => {
                 // This should not happen, as we should only drop after initialization is done

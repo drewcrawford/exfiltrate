@@ -50,7 +50,7 @@
 /// # Arguments
 ///
 /// * `str` - The message to log. This should be a string slice containing
-///           the formatted message to output.
+///   the formatted message to output.
 ///
 /// # Platform-specific behavior
 ///

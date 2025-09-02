@@ -437,8 +437,8 @@ pub(crate) fn list_int() -> ToolList {
         .chain(SHARED_TOOLS.iter())
         .map(|tool| ToolInfo::from_tool(tool.as_ref()))
         .collect();
-    let tool_list = ToolList { tools: tool_infos };
-    tool_list
+    
+    ToolList { tools: tool_infos }
 }
 
 /// Processes a `tools/list` request.
@@ -455,8 +455,8 @@ pub(crate) fn list_int() -> ToolList {
 /// A response containing the list of available tools
 pub(crate) fn list_process(request: Request) -> Response<ToolList> {
     let tool_list = list_int();
-    let response = Response::new(tool_list, request.id);
-    response
+    
+    Response::new(tool_list, request.id)
 }
 
 /// Registers a new tool in the target application.
@@ -534,6 +534,7 @@ impl ToolCallParams {
 /// ]);
 /// ```
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 pub struct ToolCallResponse {
     /// The content returned by the tool
     pub(crate) content: Vec<ToolContent>,
@@ -837,14 +838,6 @@ impl std::hash::Hash for ToolCallResponse {
     }
 }
 
-impl Default for ToolCallResponse {
-    fn default() -> Self {
-        Self {
-            content: Vec::new(),
-            is_error: false,
-        }
-    }
-}
 
 impl fmt::Display for ToolCallResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
