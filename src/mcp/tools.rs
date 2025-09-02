@@ -578,7 +578,8 @@ impl ToolCallResponse {
 ///     "Invalid input: missing required parameter 'filename'".into(),
 /// ]);
 /// ```
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, thiserror::Error)]
+#[error("Tool call failed: {}", format_content(&self.content))]
 pub struct ToolCallError {
     /// Error messages
     content: Vec<ToolContent>,
@@ -634,7 +635,7 @@ impl ToolCallError {
 /// let text_content = ToolContent::from("Hello, world!");
 /// let string_content = ToolContent::from(String::from("Dynamic content"));
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ToolContent {
     /// Text content
@@ -798,6 +799,110 @@ pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
 // =============================================================================
 // Boilerplate implementations
 // =============================================================================
+
+/// Helper function to format ToolContent for error messages.
+fn format_content(content: &[ToolContent]) -> String {
+    content
+        .iter()
+        .map(|c| match c {
+            ToolContent::Text(text) => text.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+// ToolCallResponse boilerplate - appears in order of definition above
+
+impl Clone for ToolCallResponse {
+    fn clone(&self) -> Self {
+        Self {
+            content: self.content.clone(),
+            is_error: self.is_error,
+        }
+    }
+}
+
+impl PartialEq for ToolCallResponse {
+    fn eq(&self, other: &Self) -> bool {
+        self.content == other.content && self.is_error == other.is_error
+    }
+}
+
+impl Eq for ToolCallResponse {}
+
+impl std::hash::Hash for ToolCallResponse {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.content.hash(state);
+        self.is_error.hash(state);
+    }
+}
+
+impl Default for ToolCallResponse {
+    fn default() -> Self {
+        Self {
+            content: Vec::new(),
+            is_error: false,
+        }
+    }
+}
+
+impl fmt::Display for ToolCallResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_error {
+            write!(f, "ToolCallResponse(Error): {}", format_content(&self.content))
+        } else {
+            write!(f, "ToolCallResponse(Success): {}", format_content(&self.content))
+        }
+    }
+}
+
+impl From<Vec<ToolContent>> for ToolCallResponse {
+    fn from(content: Vec<ToolContent>) -> Self {
+        Self::new(content)
+    }
+}
+
+impl From<String> for ToolCallResponse {
+    fn from(message: String) -> Self {
+        Self::new(vec![message.into()])
+    }
+}
+
+impl From<&str> for ToolCallResponse {
+    fn from(message: &str) -> Self {
+        Self::new(vec![message.into()])
+    }
+}
+
+// ToolCallError boilerplate - appears in order of definition above
+
+impl From<String> for ToolCallError {
+    /// Creates a ToolCallError from a single error message string.
+    fn from(message: String) -> Self {
+        ToolCallError::new(vec![message.into()])
+    }
+}
+
+impl From<&str> for ToolCallError {
+    /// Creates a ToolCallError from a single error message string slice.
+    fn from(message: &str) -> Self {
+        ToolCallError::new(vec![message.into()])
+    }
+}
+
+impl From<Vec<String>> for ToolCallError {
+    /// Creates a ToolCallError from multiple error message strings.
+    fn from(messages: Vec<String>) -> Self {
+        ToolCallError::new(messages.into_iter().map(|m| m.into()).collect())
+    }
+}
+
+impl From<ToolContent> for ToolCallError {
+    /// Creates a ToolCallError from a single ToolContent.
+    fn from(content: ToolContent) -> Self {
+        ToolCallError::new(vec![content])
+    }
+}
 
 impl std::hash::Hash for InputSchema {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
