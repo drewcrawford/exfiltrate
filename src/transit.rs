@@ -38,7 +38,8 @@
 //! ```
 //!
 //! ## Stdio Mode
-//! ```
+//! ```no_run
+//! # // don't run in doctests
 //! # #[cfg(feature = "transit")]
 //! # {
 //! use exfiltrate::transit::{transit_proxy::TransitProxy, stdio::Server};

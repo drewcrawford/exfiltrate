@@ -37,21 +37,6 @@
 //! The target application must call `exfiltrate::logwise::begin_capture()` to
 //! start redirecting logs to this module. Logs generated before this call will
 //! not be available for inspection.
-//!
-//! # Examples
-//!
-//! ```no_run
-//! // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-//! # #[cfg(all(feature = "transit", feature = "logwise"))]
-//! # fn example() {
-//! # use crate::transit::log_proxy::LogProxy;
-//! // Reset and add some test logs
-//! LogProxy::current().reset();
-//! LogProxy::current().add_log("0 INFO: test.rs:1:1 [0ns] Starting application".to_string());
-//! LogProxy::current().add_log("0 WARN: test.rs:2:1 [10ns] Warning message".to_string());
-//! LogProxy::current().add_log("0 ERROR: test.rs:3:1 [20ns] Error occurred".to_string());
-//! # }
-//! ```
 
 use crate::tools::{Argument, InputSchema, Tool, ToolCallError, ToolCallResponse};
 use serde_json::Value;
@@ -74,25 +59,6 @@ static CURRENT_LOGPROXY: LazyLock<LogProxy> = LazyLock::new(|| LogProxy::new());
 ///
 /// The internal storage uses `Arc<Mutex<Vec<String>>>` to ensure thread-safe
 /// access from multiple concurrent contexts.
-///
-/// # Examples
-///
-/// ```no_run
-/// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-/// # #[cfg(all(feature = "transit", feature = "logwise"))]
-/// # fn example() {
-/// # use crate::transit::log_proxy::LogProxy;
-/// // Access the global instance
-/// let log_proxy = LogProxy::current();
-///
-/// // Clear existing logs
-/// log_proxy.reset();
-///
-/// // Add new logs
-/// log_proxy.add_log("0 INFO: app.rs:1:1 [0ns] Application started".to_string());
-/// log_proxy.add_log("0 DEBUG: app.rs:2:1 [10ns] Debug information".to_string());
-/// # }
-/// ```
 pub struct LogProxy {
     logs: Arc<Mutex<Vec<String>>>,
 }
@@ -101,18 +67,6 @@ impl LogProxy {
     /// Returns the global singleton instance of the log proxy.
     ///
     /// This provides access to the centralized log storage system.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-    /// # #[cfg(all(feature = "transit", feature = "logwise"))]
-    /// # fn example() {
-    /// # use crate::transit::log_proxy::LogProxy;
-    /// let log_proxy = LogProxy::current();
-    /// log_proxy.reset();  // Clear any existing logs
-    /// # }
-    /// ```
     pub fn current() -> &'static LogProxy {
         &CURRENT_LOGPROXY
     }
@@ -130,20 +84,6 @@ impl LogProxy {
     ///
     /// This removes all log entries from the internal storage, resetting
     /// the log buffer to an empty state.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-    /// # #[cfg(all(feature = "transit", feature = "logwise"))]
-    /// # fn example() {
-    /// # use crate::transit::log_proxy::LogProxy;
-    /// let log_proxy = LogProxy::current();
-    /// log_proxy.add_log("Test log".to_string());
-    /// log_proxy.reset();
-    /// // Log storage is now empty
-    /// # }
-    /// ```
     pub fn reset(&self) {
         self.logs.lock().unwrap().clear();
     }
@@ -156,20 +96,6 @@ impl LogProxy {
     /// # Arguments
     ///
     /// * `log` - The log message to store
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-    /// # #[cfg(all(feature = "transit", feature = "logwise"))]
-    /// # fn example() {
-    /// # use crate::transit::log_proxy::LogProxy;
-    /// let log_proxy = LogProxy::current();
-    /// log_proxy.reset();
-    /// log_proxy.add_log("0 INFO: main.rs:1:1 [0ns] Starting".to_string());
-    /// log_proxy.add_log("0 WARN: main.rs:2:1 [10ns] Warning".to_string());
-    /// # }
-    /// ```
     pub fn add_log(&self, log: String) {
         self.logs.lock().unwrap().push(log);
     }
@@ -200,32 +126,6 @@ struct LogResponse {
 ///
 /// - `start_pos` (optional): Position to start reading from (0-indexed)
 /// - `length` (optional): Number of logs to read (default: 10)
-///
-/// # Examples
-///
-/// ```no_run
-/// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-/// # #[cfg(all(feature = "transit", feature = "logwise"))]
-/// # fn example() {
-/// # use crate::transit::log_proxy::{LogProxy, LogwiseRead};
-/// # use crate::tools::Tool;
-/// # use std::collections::HashMap;
-/// # use serde_json::json;
-/// // Set up test data
-/// LogProxy::current().reset();
-/// for i in 0..20 {
-///     LogProxy::current().add_log(format!("0 INFO: test.rs:{}:1 [{}ns] Log {}", i, i*10, i));
-/// }
-///
-/// // Read the last 5 logs
-/// let tool = LogwiseRead;
-/// let mut params = HashMap::new();
-/// params.insert("length".to_string(), json!(5));
-///
-/// let response = tool.call(params).unwrap();
-/// assert!(!response.is_error);
-/// # }
-/// ```
 pub struct LogwiseRead;
 
 impl Tool for LogwiseRead {
@@ -314,32 +214,6 @@ struct LogwiseGrepResponse {
 /// - Anchors: `^0 INFO`, `error$`
 /// - Groups and alternation: `(ERROR|WARN)`, `task (\d+)`
 ///
-/// # Examples
-///
-/// ```no_run
-/// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-/// # #[cfg(all(feature = "transit", feature = "logwise"))]
-/// # fn example() {
-/// # use crate::transit::log_proxy::{LogProxy, LogwiseGrep};
-/// # use crate::tools::Tool;
-/// # use std::collections::HashMap;
-/// # use serde_json::json;
-/// // Set up test logs
-/// LogProxy::current().reset();
-/// LogProxy::current().add_log("0 INFO: app.rs:1:1 [0ns] Starting".to_string());
-/// LogProxy::current().add_log("0 ERROR: app.rs:2:1 [10ns] Connection failed".to_string());
-/// LogProxy::current().add_log("0 WARN: app.rs:3:1 [20ns] Retrying".to_string());
-/// LogProxy::current().add_log("1 ERROR: app.rs:4:1 [30ns] Fatal error".to_string());
-///
-/// // Search for all ERROR logs
-/// let tool = LogwiseGrep;
-/// let mut params = HashMap::new();
-/// params.insert("pattern".to_string(), json!("ERROR"));
-///
-/// let response = tool.call(params).unwrap();
-/// // Response will contain the two ERROR log entries
-/// # }
-/// ```
 pub struct LogwiseGrep;
 impl Tool for LogwiseGrep {
     fn name(&self) -> &str {
