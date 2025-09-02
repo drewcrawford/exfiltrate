@@ -299,7 +299,7 @@ impl ToolInfo {
 ///     ),
 /// ]);
 /// ```
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize,Clone,PartialEq,Eq)]
 pub struct InputSchema {
     /// The schema type (always "object" for tool parameters)
     r#type: String,
@@ -325,6 +325,7 @@ pub struct InputSchema {
 ///     true  // required
 /// );
 /// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Argument {
     /// The parameter name
     name: String,
@@ -791,5 +792,55 @@ pub(crate) fn call(request: Request) -> Response<ToolCallResponse> {
     match r {
         Ok(r) => Response::new(r, request.id),
         Err(e) => Response::err(e, request.id),
+    }
+}
+
+// =============================================================================
+// Boilerplate implementations
+// =============================================================================
+
+impl std::hash::Hash for InputSchema {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.r#type.hash(state);
+        // HashMap doesn't implement Hash, so we need to hash entries in a deterministic order
+        let mut properties_vec: Vec<_> = self.properties.iter().collect();
+        properties_vec.sort_by_key(|(k, _)| *k);
+        for (k, v) in properties_vec {
+            k.hash(state);
+            // serde_json::Value doesn't implement Hash, so we hash the string representation
+            format!("{:?}", v).hash(state);
+        }
+        self.required.hash(state);
+    }
+}
+
+impl Default for InputSchema {
+    fn default() -> Self {
+        Self {
+            r#type: "object".to_string(),
+            properties: HashMap::new(),
+            required: Vec::new(),
+        }
+    }
+}
+
+impl fmt::Display for InputSchema {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "InputSchema(type: {}, properties: {}, required: {:?})", 
+               self.r#type, self.properties.len(), self.required)
+    }
+}
+
+// Argument boilerplate - appears in order of definition above
+impl fmt::Display for Argument {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: {} ({}) - {}",
+            self.name,
+            self.r#type,
+            if self.required { "required" } else { "optional" },
+            self.description
+        )
     }
 }
