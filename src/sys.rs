@@ -63,7 +63,6 @@
 //! Always import time and thread APIs through this module rather than directly
 //! from std or platform-specific crates. This ensures your code remains portable:
 
-
 /// Platform-appropriate threading API.
 ///
 /// Re-exports the appropriate threading implementation based on the target platform:
