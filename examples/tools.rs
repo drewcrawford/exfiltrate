@@ -1,4 +1,4 @@
-use exfiltrate::tools::{Argument, InputSchema, ToolCallResponse};
+use exfiltrate::mcp::tools::{Argument, InputSchema, ToolCallResponse};
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time;
@@ -6,7 +6,7 @@ use std::time;
 use web_time as time;
 
 pub struct MyTool {}
-impl exfiltrate::tools::Tool for MyTool {
+impl exfiltrate::mcp::tools::Tool for MyTool {
     fn name(&self) -> &str {
         "my_tool"
     }
@@ -18,12 +18,12 @@ impl exfiltrate::tools::Tool for MyTool {
     fn call(
         &self,
         params: HashMap<String, serde_json::Value>,
-    ) -> Result<ToolCallResponse, exfiltrate::tools::ToolCallError> {
+    ) -> Result<ToolCallResponse, exfiltrate::mcp::tools::ToolCallError> {
         let params = params
             .get("input")
             .and_then(|v| v.as_f64())
             .ok_or_else(|| {
-                exfiltrate::tools::ToolCallError::new(vec!["Invalid input parameter".into()])
+                exfiltrate::mcp::tools::ToolCallError::new(vec!["Invalid input parameter".into()])
             })?;
         Ok(ToolCallResponse::new(vec![
             format!("This is a response from my tool: {}", params).into(),
@@ -40,7 +40,7 @@ impl exfiltrate::tools::Tool for MyTool {
 }
 
 pub struct EventualTool {}
-impl exfiltrate::tools::Tool for EventualTool {
+impl exfiltrate::mcp::tools::Tool for EventualTool {
     fn name(&self) -> &str {
         "eventual_tool"
     }
@@ -52,12 +52,12 @@ impl exfiltrate::tools::Tool for EventualTool {
     fn call(
         &self,
         params: HashMap<String, serde_json::Value>,
-    ) -> Result<ToolCallResponse, exfiltrate::tools::ToolCallError> {
+    ) -> Result<ToolCallResponse, exfiltrate::mcp::tools::ToolCallError> {
         let params = params
             .get("input")
             .and_then(|v| v.as_f64())
             .ok_or_else(|| {
-                exfiltrate::tools::ToolCallError::new(vec!["Invalid input parameter".into()])
+                exfiltrate::mcp::tools::ToolCallError::new(vec!["Invalid input parameter".into()])
             })?;
         Ok(ToolCallResponse::new(vec![
             format!("This is a response from my tool: {}", params).into(),
@@ -76,10 +76,10 @@ impl exfiltrate::tools::Tool for EventualTool {
 fn main() {
     let proxy = exfiltrate::transit::transit_proxy::TransitProxy::new();
     let _server = exfiltrate::transit::http::Server::new("127.0.0.1:1984", proxy);
-    exfiltrate::tools::add_tool(Box::new(MyTool {}));
+    exfiltrate::mcp::tools::add_tool(Box::new(MyTool {}));
     std::thread::sleep(time::Duration::from_secs(10));
     //insert a new tool
-    exfiltrate::tools::add_tool(Box::new(EventualTool {}));
+    exfiltrate::mcp::tools::add_tool(Box::new(EventualTool {}));
     eprintln!("Added late tool");
     std::thread::sleep(time::Duration::from_secs(1000));
 }

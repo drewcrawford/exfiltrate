@@ -7,10 +7,8 @@
 //!
 //! # Architecture
 //!
-//! The MCP implementation is divided into three main components:
+//! The MCP implementation is divided into main components:
 //!
-//! - **Request Dispatch**: The [`dispatch_in_target`] function handles incoming JSON-RPC
-//!   requests and routes them to appropriate handlers
 //! - **Tool Management**: The [`tools`] module provides tool registration, discovery,
 //!   and invocation capabilities
 //! - **Dynamic Tools**: Internal tools provide runtime tool discovery, allowing agents
@@ -41,7 +39,7 @@
 //! ## Registering custom tools
 //!
 //! ```
-//! use exfiltrate::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
+//! use exfiltrate::mcp::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
 //! use std::collections::HashMap;
 //!
 //! struct MyCustomTool;
@@ -74,7 +72,7 @@
 //! }
 //!
 //! // Register the tool
-//! exfiltrate::tools::add_tool(Box::new(MyCustomTool));
+//! exfiltrate::mcp::tools::add_tool(Box::new(MyCustomTool));
 //!
 //! ```
 
@@ -100,7 +98,7 @@ pub mod tools;
 ///
 /// A JSON-RPC response containing either the result of the operation or an error
 ///
-pub fn dispatch_in_target(request: Request) -> Response<serde_json::Value> {
+pub(crate) fn dispatch_in_target(request: Request) -> Response<serde_json::Value> {
     if request.method == "tools/list" {
         tools::list_process(request).erase()
     } else if request.method == "tools/call" {

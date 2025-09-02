@@ -20,7 +20,8 @@
 //! The transit proxy can be started in two modes:
 //!
 //! ## HTTP Mode
-//! ```
+//! ```no_run
+//! # // don't run in doctests
 //! # #[cfg(feature = "transit")]
 //! # {
 //! use exfiltrate::transit::{transit_proxy::TransitProxy, http::Server};

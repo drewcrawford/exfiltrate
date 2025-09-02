@@ -37,7 +37,7 @@ exfiltrate is the answer to these frequently-asked questions:
 ## Basic Tool Implementation
 
 ```
-use exfiltrate::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
+use exfiltrate::mcp::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
 use std::collections::HashMap;
 
 // Define a simple tool
@@ -76,7 +76,7 @@ impl Tool for HelloTool {
 }
 
 // Register the tool
-exfiltrate::tools::add_tool(Box::new(HelloTool));
+exfiltrate::mcp::tools::add_tool(Box::new(HelloTool));
 ```
 
 
@@ -121,7 +121,7 @@ drop(server); // Cleanup for doctest
 When implementing tools, always validate input parameters and provide clear error messages:
 
 ```
-use exfiltrate::tools::{Tool, ToolCallResponse, ToolCallError};
+use exfiltrate::mcp::tools::{Tool, ToolCallResponse, ToolCallError};
 use std::collections::HashMap;
 
 struct SafeTool;
@@ -130,8 +130,8 @@ impl Tool for SafeTool {
     fn name(&self) -> &str { "safe_divide" }
     fn description(&self) -> &str { "Safely divides two numbers" }
     
-    fn input_schema(&self) -> exfiltrate::tools::InputSchema {
-        use exfiltrate::tools::{InputSchema, Argument};
+    fn input_schema(&self) -> exfiltrate::mcp::tools::InputSchema {
+        use exfiltrate::mcp::tools::{InputSchema, Argument};
         InputSchema::new(vec![
             Argument::new("dividend".into(), "number".into(), "Number to divide".into(), true),
             Argument::new("divisor".into(), "number".into(), "Number to divide by".into(), true),
@@ -231,53 +231,3 @@ mod sys;
 #[cfg(feature = "transit")]
 pub mod transit;
 
-/// Tool management and registration system.
-/// 
-/// This module is re-exported from [`mcp::tools`] for convenience. It provides
-/// the core infrastructure for creating, registering, and invoking MCP tools.
-/// 
-/// # Key Types
-/// 
-/// - [`tools::Tool`] - The trait that all tools must implement
-/// - [`tools::InputSchema`] - Defines the expected parameters for a tool
-/// - [`tools::Argument`] - Describes a single tool parameter
-/// - [`tools::ToolCallResponse`] - Successful tool execution result
-/// - [`tools::ToolCallError`] - Tool execution error
-/// 
-/// # Functions
-/// 
-/// - [`tools::add_tool`] - Register a new tool in the system
-/// 
-/// # Example
-/// 
-/// ```
-/// use exfiltrate::tools::{Tool, InputSchema, ToolCallResponse, ToolCallError};
-/// use std::collections::HashMap;
-/// 
-/// // Create a simple calculator tool
-/// struct AddTool;
-/// 
-/// impl Tool for AddTool {
-///     fn name(&self) -> &str { "add" }
-///     fn description(&self) -> &str { "Adds two numbers" }
-///     fn input_schema(&self) -> InputSchema {
-///         use exfiltrate::tools::Argument;
-///         InputSchema::new(vec![
-///             Argument::new("a".into(), "number".into(), "First number".into(), true),
-///             Argument::new("b".into(), "number".into(), "Second number".into(), true),
-///         ])
-///     }
-///     fn call(&self, params: HashMap<String, serde_json::Value>) 
-///         -> Result<ToolCallResponse, ToolCallError> {
-///         let a = params.get("a").and_then(|v| v.as_f64())
-///             .ok_or_else(|| ToolCallError::new(vec!["Missing parameter a".into()]))?;
-///         let b = params.get("b").and_then(|v| v.as_f64())
-///             .ok_or_else(|| ToolCallError::new(vec!["Missing parameter b".into()]))?;
-///         Ok(ToolCallResponse::new(vec![format!("{}", a + b).into()]))
-///     }
-/// }
-/// 
-/// // Register and use the tool
-/// exfiltrate::tools::add_tool(Box::new(AddTool));
-/// ```
-pub use mcp::tools;

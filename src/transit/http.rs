@@ -587,7 +587,8 @@ impl Server {
     /// * `proxy` - The transit proxy that will handle message routing
     ///
     /// # Example
-    /// ```
+    /// ```no_run
+    /// # // don't run in doctests
     /// # #[cfg(feature = "transit")]
     /// # {
     /// use exfiltrate::transit::{transit_proxy::TransitProxy, http::Server};

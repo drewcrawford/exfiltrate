@@ -1,5 +1,5 @@
 use crate::jrpc::{Request, Response};
-use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
+use crate::mcp::tools::{ToolCallParams, ToolCallResponse, ToolList};
 use crate::transit::http::{ReadWebSocketOrStream, WriteWebSocketOrStream};
 #[cfg(feature = "logwise")]
 use crate::transit::log_proxy::LogProxy;
@@ -470,7 +470,7 @@ impl TransitProxy {
                 Ok(Response::new(result, message.id).erase())
             }
             "tools/call" => {
-                let params: crate::tools::ToolCallParams =
+                let params: crate::mcp::tools::ToolCallParams =
                     serde_json::from_value(message.params.unwrap()).unwrap();
                 let result = crate::transit::builtin_tools::call_proxy_tool(params);
                 match result {

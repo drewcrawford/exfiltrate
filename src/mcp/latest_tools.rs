@@ -7,7 +7,7 @@
 //! # Purpose
 //!
 //! Many AI agents and LLM interfaces cache the available tool list when they start
-//! a session. If new tools are registered after initialization (via [`crate::tools::add_tool`]),
+//! a session. If new tools are registered after initialization (via [`crate::mcp::tools::add_tool`]),
 //! these agents won't see them in their cached list. The tools in this module solve
 //! this problem by providing:
 //!
@@ -17,14 +17,14 @@
 //! # Usage Pattern
 //!
 //! 1. Agent starts with cached tool list
-//! 2. New tools are added dynamically via [`crate::tools::add_tool`]
+//! 2. New tools are added dynamically via [`crate::mcp::tools::add_tool`]
 //! 3. Agent calls `latest_tools` to discover new tools
 //! 4. Agent calls `run_latest_tool` to invoke the newly discovered tools
 //!
 //! # Examples
 //!
 //! ```
-//! use exfiltrate::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
+//! use exfiltrate::mcp::tools::{Tool, InputSchema, Argument, ToolCallResponse, ToolCallError};
 //! use std::collections::HashMap;
 //!
 //! // Define a simple tool that can be added dynamically
@@ -42,13 +42,13 @@
 //! }
 //!
 //! // Add the tool dynamically
-//! exfiltrate::tools::add_tool(Box::new(DynamicTool));
+//! exfiltrate::mcp::tools::add_tool(Box::new(DynamicTool));
 //!
 //! // The agent can now discover this tool using `latest_tools`
 //! // and invoke it using `run_latest_tool` with name "dynamic_tool"
 //! ```
 
-use crate::tools::{InputSchema, Tool, ToolCallError, ToolCallParams, ToolCallResponse};
+use crate::mcp::tools::{InputSchema, Tool, ToolCallError, ToolCallParams, ToolCallResponse};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -71,11 +71,11 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::Tool;
+/// use exfiltrate::mcp::tools::Tool;
 /// use std::collections::HashMap;
 ///
 /// // Access the shared latest_tools instance
-/// let tools = &exfiltrate::tools::SHARED_TOOLS;
+/// let tools = &exfiltrate::mcp::tools::SHARED_TOOLS;
 /// let latest_tools = tools.iter()
 ///     .find(|t| t.name() == "latest_tools")
 ///     .expect("latest_tools should be available");
@@ -110,10 +110,10 @@ impl Tool for LatestTools {
     fn call(
         &self,
         _params: std::collections::HashMap<String, serde_json::Value>,
-    ) -> Result<crate::tools::ToolCallResponse, crate::tools::ToolCallError> {
+    ) -> Result<crate::mcp::tools::ToolCallResponse, crate::mcp::tools::ToolCallError> {
         let tools = crate::mcp::tools::list_int();
         let text = serde_json::to_string(&tools).unwrap();
-        Ok(crate::tools::ToolCallResponse::new(vec![text.into()]))
+        Ok(crate::mcp::tools::ToolCallResponse::new(vec![text.into()]))
     }
 
     fn input_schema(&self) -> crate::mcp::tools::InputSchema {
@@ -142,7 +142,7 @@ impl Tool for LatestTools {
 /// # Examples
 ///
 /// ```
-/// use exfiltrate::tools::{Tool, InputSchema, ToolCallResponse, ToolCallError};
+/// use exfiltrate::mcp::tools::{Tool, InputSchema, ToolCallResponse, ToolCallError};
 /// use std::collections::HashMap;
 /// use serde_json::json;
 ///
@@ -153,7 +153,7 @@ impl Tool for LatestTools {
 ///     fn description(&self) -> &str { "Test tool" }
 ///     fn input_schema(&self) -> InputSchema {
 ///         InputSchema::new(vec![
-///             exfiltrate::tools::Argument::new(
+///             exfiltrate::mcp::tools::Argument::new(
 ///                 "message".to_string(),
 ///                 "string".to_string(),
 ///                 "A test message".to_string(),
@@ -170,10 +170,10 @@ impl Tool for LatestTools {
 ///     }
 /// }
 ///
-/// exfiltrate::tools::add_tool(Box::new(TestTool));
+/// exfiltrate::mcp::tools::add_tool(Box::new(TestTool));
 ///
 /// // Now use RunLatestTool to invoke it
-/// let tools = &exfiltrate::tools::SHARED_TOOLS;
+/// let tools = &exfiltrate::mcp::tools::SHARED_TOOLS;
 /// let run_tool = tools.iter()
 ///     .find(|t| t.name() == "run_latest_tool")
 ///     .expect("run_latest_tool should be available");
@@ -205,13 +205,13 @@ impl Tool for RunLatestTool {
 
     fn input_schema(&self) -> InputSchema {
         InputSchema::new(vec![
-            crate::tools::Argument::new(
+            crate::mcp::tools::Argument::new(
                 "tool_name".to_string(),
                 "string".to_string(),
                 "Name of the tool to run".to_string(),
                 true,
             ),
-            crate::tools::Argument::new(
+            crate::mcp::tools::Argument::new(
                 "params".to_string(),
                 "object".to_string(),
                 "Parameters for the tool".to_string(),

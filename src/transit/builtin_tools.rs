@@ -40,7 +40,7 @@
 //! - `logwise`: Enables log capture and inspection tools (`LogwiseRead`, `LogwiseGrep`)
 //!
 
-use crate::tools::{Tool, ToolCallParams, ToolCallResponse, ToolInfo, ToolList};
+use crate::mcp::tools::{Tool, ToolCallParams, ToolCallResponse, ToolInfo, ToolList};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -72,7 +72,7 @@ static PROXY_ONLY_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
 /// - Descriptions
 /// - Input schemas
 pub fn proxy_tools() -> ToolList {
-    let tools = crate::tools::SHARED_TOOLS
+    let tools = crate::mcp::tools::SHARED_TOOLS
         .iter()
         .chain(PROXY_ONLY_TOOLS.iter())
         .map(|tool| ToolInfo::from_tool(tool.as_ref()))
@@ -134,7 +134,7 @@ pub fn call_proxy_tool(params: ToolCallParams) -> Result<ToolCallResponse, crate
             Ok(response) => Ok(response),
             Err(e) => Ok(e.into_response()),
         }
-    } else if let Some(tool) = crate::tools::SHARED_TOOLS
+    } else if let Some(tool) = crate::mcp::tools::SHARED_TOOLS
         .iter()
         .find(|tool| tool.name() == params.name)
     {

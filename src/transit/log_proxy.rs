@@ -38,7 +38,7 @@
 //! start redirecting logs to this module. Logs generated before this call will
 //! not be available for inspection.
 
-use crate::tools::{Argument, InputSchema, Tool, ToolCallError, ToolCallResponse};
+use crate::mcp::tools::{Argument, InputSchema, Tool, ToolCallError, ToolCallResponse};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
