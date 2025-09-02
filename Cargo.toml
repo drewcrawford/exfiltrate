@@ -40,7 +40,7 @@ wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"
 continue = "0.1.1"
 # for websocket routing
-continue_stream = {path = "../continue_stream"}
+continue_stream = {version = "0.1.0" }
 
 [features]
 transit = ["dep:regex","dep:base64", "dep:sha1"] # primarily used for logwise parsing
