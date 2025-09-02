@@ -14,7 +14,8 @@ use std::io::Write;
 /// terminated with a newline character.
 ///
 /// # Example
-/// ```
+/// ```no_run
+/// # // don't run in doctests
 /// # #[cfg(feature = "transit")]
 /// # {
 /// use exfiltrate::transit::{transit_proxy::TransitProxy, stdio::Server};
@@ -40,7 +41,8 @@ impl Server {
     /// * `proxy` - The transit proxy that will handle message routing
     ///
     /// # Example
-    /// ```
+    /// ```no_run
+    /// # // don't run in doctests
     /// # #[cfg(feature = "transit")]
     /// # {
     /// use exfiltrate::transit::{transit_proxy::TransitProxy, stdio::Server};

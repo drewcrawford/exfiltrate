@@ -39,23 +39,6 @@
 //! Some tools are conditionally compiled based on feature flags:
 //! - `logwise`: Enables log capture and inspection tools (`LogwiseRead`, `LogwiseGrep`)
 //!
-//! # Examples
-//!
-//! ```no_run
-//! // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-//! # #[cfg(feature = "transit")]
-//! # fn example() {
-//! # use crate::transit::builtin_tools;
-//! // Get list of all proxy tools
-//! let tools = builtin_tools::proxy_tools();
-//! assert!(!tools.tools.is_empty(), "Should have at least shared tools");
-//!
-//! // Get proxy-only tools (may be empty without logwise feature)
-//! let proxy_only = builtin_tools::proxy_only_tools();
-//! #[cfg(feature = "logwise")]
-//! assert!(!proxy_only.tools.is_empty(), "Should have logwise tools when feature enabled");
-//! # }
-//! ```
 
 use crate::tools::{Tool, ToolCallParams, ToolCallResponse, ToolInfo, ToolList};
 use std::collections::HashMap;
@@ -88,25 +71,6 @@ static PROXY_ONLY_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
 /// - Tool names
 /// - Descriptions
 /// - Input schemas
-///
-/// # Examples
-///
-/// ```no_run
-/// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-/// # #[cfg(feature = "transit")]
-/// # fn example() {
-/// # use crate::transit::builtin_tools;
-/// let tools = builtin_tools::proxy_tools();
-///
-/// // The proxy always has at least the shared tools
-/// assert!(!tools.tools.is_empty());
-///
-/// // Iterate through available tools
-/// for tool_info in &tools.tools {
-///     println!("Tool: {}", tool_info.name);
-/// }
-/// # }
-/// ```
 pub fn proxy_tools() -> ToolList {
     let tools = crate::tools::SHARED_TOOLS
         .iter()
@@ -127,29 +91,6 @@ pub fn proxy_tools() -> ToolList {
 /// A `ToolList` containing only the proxy-exclusive tools. This may be empty
 /// if no proxy-only tools are compiled in (e.g., when the `logwise` feature is disabled).
 ///
-/// # Examples
-///
-/// ```no_run
-/// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-/// # #[cfg(feature = "transit")]
-/// # fn example() {
-/// # use crate::transit::builtin_tools;
-/// let proxy_only = builtin_tools::proxy_only_tools();
-///
-/// // The number of proxy-only tools depends on feature flags
-/// #[cfg(feature = "logwise")]
-/// {
-///     // With logwise feature, we have log inspection tools
-///     assert!(proxy_only.tools.len() >= 2);
-/// }
-///
-/// #[cfg(not(feature = "logwise"))]
-/// {
-///     // Without logwise feature, no proxy-only tools
-///     assert_eq!(proxy_only.tools.len(), 0);
-/// }
-/// # }
-/// ```
 pub fn proxy_only_tools() -> ToolList {
     let tools = PROXY_ONLY_TOOLS
         .iter()
@@ -180,34 +121,6 @@ pub fn proxy_only_tools() -> ToolList {
 /// Tool execution errors are converted to successful responses with the error flag set,
 /// following the MCP protocol convention. Only missing tools result in JSON-RPC errors.
 ///
-/// # Examples
-///
-/// ```no_run
-/// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-/// # #[cfg(all(feature = "transit", feature = "logwise"))]
-/// # fn example() {
-/// # use crate::transit::builtin_tools::call_proxy_tool;
-/// # use crate::tools::ToolCallParams;
-/// # use std::collections::HashMap;
-/// # use serde_json::json;
-/// // Call the logwise_read tool to get recent logs
-/// let mut args = HashMap::new();
-/// args.insert("start_pos".to_string(), json!(0));
-/// args.insert("length".to_string(), json!(10));
-///
-/// let params = ToolCallParams::new("logwise_read".to_string(), args);
-/// match call_proxy_tool(params) {
-///     Ok(response) => {
-///         // Tool executed successfully
-///         assert!(!response.is_error);
-///     }
-///     Err(e) => {
-///         // Tool not found
-///         eprintln!("Error: {}", e);
-///     }
-/// }
-/// # }
-/// ```
 pub fn call_proxy_tool(params: ToolCallParams) -> Result<ToolCallResponse, crate::jrpc::Error> {
     //try proxy tools first
     //convert to hashmap
@@ -253,33 +166,6 @@ pub fn call_proxy_tool(params: ToolCallParams) -> Result<ToolCallResponse, crate
 ///
 /// * `Ok(ToolCallResponse)` - The successful response from the proxy-only tool
 /// * `Err(Error)` - A JSON-RPC error if the tool is not found in proxy-only tools
-///
-/// # Examples
-///
-/// ```no_run
-/// // ALLOW_NORUN_DOCTEST: Module is internal to crate and not accessible from doctests
-/// # #[cfg(all(feature = "transit", feature = "logwise"))]
-/// # fn example() {
-/// # use crate::transit::builtin_tools::call_proxy_only_tool;
-/// # use crate::tools::ToolCallParams;
-/// # use std::collections::HashMap;
-/// # use serde_json::json;
-/// // Call logwise_grep to search for errors in logs
-/// let mut args = HashMap::new();
-/// args.insert("pattern".to_string(), json!("ERROR"));
-/// let params = ToolCallParams::new("logwise_grep".to_string(), args);
-///
-/// match call_proxy_only_tool(params) {
-///     Ok(response) => {
-///         // Found matching logs
-///         assert!(!response.is_error);
-///     }
-///     Err(_) => {
-///         // Tool not available (e.g., logwise feature disabled)
-///     }
-/// }
-/// # }
-/// ```
 pub fn call_proxy_only_tool(
     params: ToolCallParams,
 ) -> Result<ToolCallResponse, crate::jrpc::Error> {

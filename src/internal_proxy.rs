@@ -60,24 +60,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 /// This enum represents the possible errors that can occur when
 /// communicating through the internal proxy.
 ///
-/// # Examples
-///
-/// ```ignore
-/// // ALLOW_IGNORE_DOCTEST: internal_proxy is a private module
-/// use crate::internal_proxy::Error;
-///
-/// // Error can be pattern matched
-/// let error = Error::NotConnected;
-/// match error {
-///     Error::NotConnected => {
-///         println!("Connection not available");
-///     }
-/// }
-///
-/// // Error implements Debug
-/// let error = Error::NotConnected;
-/// println!("Error occurred: {:?}", error);
-/// ```
+
 #[derive(Debug)]
 pub enum Error {
     /// The proxy is not connected to the remote endpoint.
@@ -92,28 +75,6 @@ pub enum Error {
 /// This static instance is lazily initialized on first access and remains
 /// alive for the duration of the program.
 static INTERNAL_PROXY: LazyLock<InternalProxy> = LazyLock::new(|| InternalProxy::new());
-
-/// Platform-specific write stream type.
-///
-/// - On native platforms: Uses `TcpStream` for writing
-/// - On WebAssembly: Uses `websocket_adapter::WriteAdapter`
-#[cfg(not(target_arch = "wasm32"))]
-type WriteStream = TcpStream;
-
-/// Platform-specific read stream type.
-///
-/// - On native platforms: Uses `TcpStream` for reading
-/// - On WebAssembly: Uses `websocket_adapter::ReadAdapter`
-#[cfg(not(target_arch = "wasm32"))]
-type ReadStream = TcpStream;
-
-/// Platform-specific write stream type for WebAssembly.
-#[cfg(target_arch = "wasm32")]
-type WriteStream = websocket_adapter::WriteAdapter;
-
-/// Platform-specific read stream type for WebAssembly.
-#[cfg(target_arch = "wasm32")]
-type ReadStream = websocket_adapter::ReadApapter;
 
 /// Internal proxy for handling JSON-RPC communication.
 ///
@@ -138,6 +99,7 @@ pub struct InternalProxy {
     ///
     /// In practice, notifications are sent from the main thread on wasm,
     /// so we can't use a simple Mutex.
+    #[cfg(feature="logwise")]
     buffered_notification_sender: std::sync::mpsc::Sender<crate::jrpc::Notification>,
 
     /// Receiver for buffered notifications.
@@ -211,9 +173,10 @@ impl InternalProxy {
     /// The connection attempt is non-blocking and will be retried
     /// automatically when sending notifications.
     fn new() -> Self {
-        let (sender, receiver) = std::sync::mpsc::channel();
+        let (_sender, receiver) = std::sync::mpsc::channel();
         let m = InternalProxy {
-            buffered_notification_sender: sender,
+            #[cfg(feature="logwise")]
+            buffered_notification_sender: _sender,
             buffered_notification_receiver: Mutex::new(receiver),
             bidirectional_proxy: Arc::new(OnceNonLock::new()),
         };
@@ -288,27 +251,7 @@ impl InternalProxy {
     /// * `Ok(())` - If the notification was successfully sent
     /// * `Err(Error::NotConnected)` - If no connection is available
     ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // ALLOW_IGNORE_DOCTEST: InternalProxy is in a private module not accessible from public API
-    /// use exfiltrate::jrpc::Notification;
-    /// use exfiltrate::internal_proxy::{InternalProxy, Error};
-    /// use serde_json::json;
-    ///
-    /// let notification = Notification::new(
-    ///     "log".to_string(),
-    ///     Some(json!({"message": "Hello"}))
-    /// );
-    ///
-    /// let proxy = InternalProxy::current();
-    /// match proxy.send_notification(notification) {
-    ///     Ok(()) => println!("Notification sent successfully"),
-    ///     Err(Error::NotConnected) => {
-    ///         println!("Connection not available, notification not sent");
-    ///     }
-    /// }
-    /// ```
+
     pub fn send_notification(&self, notification: crate::jrpc::Notification) -> Result<(), Error> {
         self.send_buffered_if_possible();
         if let Some(proxy) = self.bidirectional_proxy.get() {
@@ -334,24 +277,8 @@ impl InternalProxy {
     ///
     /// Panics if the internal channel is disconnected (should not happen in normal operation).
     ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // ALLOW_IGNORE_DOCTEST: InternalProxy is in a private module not accessible from public API
-    /// use exfiltrate::jrpc::Notification;
-    /// use exfiltrate::internal_proxy::InternalProxy;
-    /// use serde_json::json;
-    ///
-    /// // This is commonly used by the logwise module for buffering log messages
-    /// let notification = Notification::new(
-    ///     "log".to_string(),
-    ///     Some(json!({"level": "info", "message": "Application started"}))
-    /// );
-    ///
-    /// let proxy = InternalProxy::current();
-    /// proxy.buffer_notification(notification);
-    /// // The notification will be sent when a connection becomes available
-    /// ```
+
+    #[cfg(feature="logwise")]
     pub fn buffer_notification(&self, notification: crate::jrpc::Notification) {
         self.buffered_notification_sender
             .send(notification)
@@ -407,24 +334,6 @@ impl InternalProxy {
     ///
     /// The returned reference is safe to use from multiple threads concurrently.
     /// All methods on `InternalProxy` are designed to be thread-safe.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // ALLOW_IGNORE_DOCTEST: InternalProxy is in a private module not accessible from public API
-    /// use exfiltrate::internal_proxy::InternalProxy;
-    /// use exfiltrate::jrpc::Notification;
-    /// use serde_json::json;
-    ///
-    /// // This is the primary way to access the internal proxy
-    /// let proxy = InternalProxy::current();
-    ///
-    /// let notification = Notification::new(
-    ///     "status".to_string(),
-    ///     Some(json!({"ready": true}))
-    /// );
-    /// proxy.buffer_notification(notification);
-    /// ```
     pub fn current() -> &'static InternalProxy {
         &INTERNAL_PROXY
     }

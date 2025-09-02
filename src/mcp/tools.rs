@@ -646,6 +646,7 @@ impl ToolContent {
     ///
     /// * `Some(&str)` if the content is text
     /// * `None` for other content types (when added in the future)
+    #[cfg(feature="transit")]
     pub(crate) fn as_str(&self) -> Option<&str> {
         match self {
             ToolContent::Text(text) => Some(text),

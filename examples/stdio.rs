@@ -4,7 +4,7 @@ use std::time;
 use web_time as time;
 
 fn main() {
-    let s = exfiltrate::transit::stdio::Server::new(
+    let _server = exfiltrate::transit::stdio::Server::new(
         exfiltrate::transit::transit_proxy::TransitProxy::new(),
     );
     std::thread::sleep(time::Duration::from_secs(1_000));

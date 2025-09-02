@@ -1,17 +1,11 @@
-use crate::bidirectional_proxy::{BidirectionalProxy, Error, ReadTransport, WriteTransport};
-use crate::transit::transit_proxy::{Accept, TransitProxy};
+use crate::bidirectional_proxy::{Error, ReadTransport, WriteTransport};
+use crate::transit::transit_proxy::{TransitProxy};
 use base64::Engine;
 use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 
-#[derive(PartialEq)]
-enum ParseState {
-    Method,
-    Headers,
-    Body(usize),
-}
 
 struct HTTPParser {
     buf: Vec<u8>,
@@ -97,7 +91,7 @@ impl HTTPParser {
                 return HTTPParseResult::Rejected(f);
             }
         };
-        let version = match split_line.next() {
+        let _ = match split_line.next() {
             Some(version) => version,
             None => {
                 let f = format!(
@@ -196,12 +190,11 @@ impl HTTPParser {
 }
 
 #[derive(Debug)]
-struct WebsocketWriteStream {
+pub struct WebsocketWriteStream {
     tcp: TcpStream,
-    buf: Vec<u8>,
 }
 #[derive(Debug)]
-struct WebsocketReadStream {
+pub struct WebsocketReadStream {
     tcp: TcpStream,
     tcp_layer_buf: Vec<u8>,
 }
@@ -210,7 +203,6 @@ impl WebsocketWriteStream {
     fn new(tcp: TcpStream) -> Self {
         WebsocketWriteStream {
             tcp,
-            buf: Vec::new(),
         }
     }
 }
@@ -343,7 +335,7 @@ impl WebsocketReadStream {
         //try to parse a frame
         // eprintln!("try_parse_frame: stream_buf len={}", self.tcp_layer_buf.len());
         match WebsocketFrame::from_bytes(&self.tcp_layer_buf) {
-            Ok((mut frame, size)) => {
+            Ok((frame, size)) => {
                 // eprintln!("WebSocket Frame Parsed with size {}",size);
                 // eprintln!("WebSocket frame parsed: frame_size={}, data_len={}, first_10_bytes={:?}",
                 //     size, frame.data.len(),
@@ -388,7 +380,8 @@ impl WebsocketReadStream {
 /// and upgrades connections as needed.
 ///
 /// # Example
-/// ```
+/// ```no_run
+/// # // don't actually run the server in tests
 /// # #[cfg(feature = "transit")]
 /// # {
 /// use exfiltrate::transit::{transit_proxy::TransitProxy, http::Server};
@@ -539,7 +532,6 @@ impl Session {
                     eprintln!("Sent 101 Switching Protocols upgrade");
                     //take stream
                     let stream = self.stream.take().unwrap();
-                    let addr = format!("{}", stream.peer_addr().unwrap());
                     let write_stream = WebsocketWriteStream::new(stream.try_clone().unwrap());
                     let write_stream = WriteWebSocketOrStream::WebSocket(write_stream);
                     let read_stream = WebsocketReadStream::new(stream, info.leftover_bytes);

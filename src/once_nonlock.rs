@@ -355,7 +355,6 @@ assert_eq!(attempt, 2);
 
 use std::cell::UnsafeCell;
 use std::mem::ManuallyDrop;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 const ONCE_INITIAL: u8 = 0;
@@ -586,6 +585,7 @@ impl<T> OnceNonLock<T> {
     ///     Some("async value".to_string())
     /// }).await;
     /// ```
+    #[cfg(target_arch = "wasm32")]
     pub fn init_async<F>(self: &Arc<Self>, f: F) -> impl Future<Output = ()> + use<F, T>
     where
         F: AsyncFnOnce() -> Option<T>,

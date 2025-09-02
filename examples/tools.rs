@@ -1,5 +1,4 @@
 use exfiltrate::tools::{Argument, InputSchema, ToolCallResponse};
-use exfiltrate::transit::transit_proxy::TransitProxy;
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time;
@@ -76,7 +75,7 @@ impl exfiltrate::tools::Tool for EventualTool {
 
 fn main() {
     let proxy = exfiltrate::transit::transit_proxy::TransitProxy::new();
-    let server = exfiltrate::transit::http::Server::new("127.0.0.1:1984", proxy);
+    let _server = exfiltrate::transit::http::Server::new("127.0.0.1:1984", proxy);
     exfiltrate::tools::add_tool(Box::new(MyTool {}));
     std::thread::sleep(time::Duration::from_secs(10));
     //insert a new tool

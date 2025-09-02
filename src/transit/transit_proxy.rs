@@ -1,9 +1,9 @@
 use crate::jrpc::{Request, Response};
 use crate::tools::{ToolCallParams, ToolCallResponse, ToolList};
 use crate::transit::http::{ReadWebSocketOrStream, WriteWebSocketOrStream};
+#[cfg(feature = "logwise")]
 use crate::transit::log_proxy::LogProxy;
 use std::collections::HashMap;
-use std::net::TcpStream;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -55,7 +55,8 @@ pub struct SharedAccept {
 /// - Fallback handling when no target is connected
 ///
 /// # Example
-/// ```
+/// ```no_run
+/// # //don't run because we don't want to bind the port
 /// # #[cfg(feature = "transit")]
 /// # {
 /// use exfiltrate::transit::transit_proxy::TransitProxy;
@@ -132,7 +133,8 @@ impl TransitProxy {
     /// and can handle both TCP and WebSocket connections.
     ///
     /// # Example
-    /// ```
+    /// ```no_run
+    /// # // don't run because we don't want to bind the port
     /// # #[cfg(feature = "transit")]
     /// # {
     /// use exfiltrate::transit::transit_proxy::TransitProxy;
@@ -505,9 +507,11 @@ impl SharedAccept {
         //some notifications we process locally
         match notification.method.as_str() {
             "exfiltrate/logwise/new" => {
+                #[cfg(feature = "logwise")]
                 LogProxy::current().reset();
             }
             "exfiltrate/logwise/record" => {
+                #[cfg(feature = "logwise")]
                 LogProxy::current().add_log(notification.params.unwrap().to_string())
             }
             _ => {

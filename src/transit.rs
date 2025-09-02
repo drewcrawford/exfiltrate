@@ -74,6 +74,7 @@ compile_error!(
 
 mod builtin_tools;
 pub mod http;
+#[cfg(feature="logwise")]
 mod log_proxy;
 pub mod stdio;
 pub mod transit_proxy;
