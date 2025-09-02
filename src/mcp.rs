@@ -33,9 +33,6 @@
 //!
 //! # Examples
 //!
-//! ## Dispatching MCP requests
-//!
-//!
 //! ## Registering custom tools
 //!
 //! ```

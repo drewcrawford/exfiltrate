@@ -212,7 +212,6 @@ with threads. Threads for everyone.
 # Module Organization
 
 - [`mcp`] - Model Context Protocol core implementation
-- [`tools`] - Tool trait and management system (re-exported from [`mcp::tools`])
 - [`messages`] - Inter-component message types
 - `transit` - Transit proxy system (requires `transit` feature, not available on wasm32)
 - `logwise` - Logwise logging integration (requires `logwise` feature)

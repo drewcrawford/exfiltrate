@@ -9,8 +9,8 @@
 //!
 //! The module manages two collections of tools:
 //!
-//! - **Target Tools** ([`TOOLS`]): Tools available only in the target application
-//! - **Shared Tools** ([`SHARED_TOOLS`]): Tools available in both proxy and target applications
+//! - **Target Tools** (`TOOLS`): Tools available only in the target application
+//! - **Shared Tools** (`SHARED_TOOLS`): Tools available in both proxy and target applications
 //!
 //! # Tool Implementation
 //!
@@ -195,13 +195,13 @@ pub trait Tool: Send + Sync {
 ///
 /// The collection is protected by a `RwLock` to allow concurrent reads and
 /// exclusive writes.
-pub static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| RwLock::new(vec![]));
+pub(crate) static TOOLS: LazyLock<RwLock<Vec<Box<dyn Tool>>>> = LazyLock::new(|| RwLock::new(vec![]));
 
 /// Tools available in both proxy and target applications.
 ///
 /// These tools provide core functionality that is useful in both contexts,
 /// such as dynamic tool discovery.
-pub static SHARED_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
+pub(crate) static SHARED_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| {
     vec![
         Box::new(crate::mcp::latest_tools::LatestTools),
         Box::new(crate::mcp::latest_tools::RunLatestTool),
@@ -460,7 +460,7 @@ pub(crate) fn list_process(request: Request) -> Response<ToolList> {
 
 /// Registers a new tool in the target application.
 ///
-/// Adds the tool to the [`TOOLS`] collection and sends a notification
+/// Adds the tool to the `TOOLS` collection and sends a notification
 /// to inform connected clients that the tool list has changed.
 ///
 /// # Arguments
