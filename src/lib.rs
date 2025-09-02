@@ -82,7 +82,8 @@ exfiltrate::mcp::tools::add_tool(Box::new(HelloTool));
 
 ## Starting a Transit Proxy
 
-```
+```no_run
+# // don't bind port in doctests
 # #[cfg(feature = "transit")]
 # {
 use exfiltrate::transit::{transit_proxy::TransitProxy, http::Server};
@@ -224,7 +225,7 @@ mod logging;
 #[cfg(feature = "logwise")]
 pub mod logwise;
 pub mod mcp;
-pub mod messages;
+mod messages;
 mod once_nonlock;
 mod sys;
 #[cfg(feature = "transit")]

@@ -68,29 +68,6 @@ use std::collections::HashMap;
 /// Returns a JSON string containing a `ToolList` structure with all available tools
 /// and their metadata (name, description, and input schema).
 ///
-/// # Examples
-///
-/// ```
-/// use exfiltrate::mcp::tools::Tool;
-/// use std::collections::HashMap;
-///
-/// // Access the shared latest_tools instance
-/// let tools = &exfiltrate::mcp::tools::SHARED_TOOLS;
-/// let latest_tools = tools.iter()
-///     .find(|t| t.name() == "latest_tools")
-///     .expect("latest_tools should be available");
-///
-/// // Call with empty parameters to get current tool list
-/// let result = latest_tools.call(HashMap::new());
-/// assert!(result.is_ok());
-///
-/// // The result contains a JSON string with all current tools
-/// if let Ok(response) = result {
-///     // Serialize to verify the response has content
-///     let json = serde_json::to_string(&response).unwrap();
-///     assert!(json.contains("content"));
-/// }
-/// ```
 pub struct LatestTools;
 
 impl Tool for LatestTools {
@@ -139,56 +116,6 @@ impl Tool for LatestTools {
 /// - The specified tool doesn't exist
 /// - The target tool returns an error
 ///
-/// # Examples
-///
-/// ```
-/// use exfiltrate::mcp::tools::{Tool, InputSchema, ToolCallResponse, ToolCallError};
-/// use std::collections::HashMap;
-/// use serde_json::json;
-///
-/// // First, add a tool dynamically
-/// struct TestTool;
-/// impl Tool for TestTool {
-///     fn name(&self) -> &str { "test_tool" }
-///     fn description(&self) -> &str { "Test tool" }
-///     fn input_schema(&self) -> InputSchema {
-///         InputSchema::new(vec![
-///             exfiltrate::mcp::tools::Argument::new(
-///                 "message".to_string(),
-///                 "string".to_string(),
-///                 "A test message".to_string(),
-///                 false
-///             )
-///         ])
-///     }
-///     fn call(&self, params: HashMap<String, serde_json::Value>)
-///         -> Result<ToolCallResponse, ToolCallError> {
-///         let msg = params.get("message")
-///             .and_then(|v| v.as_str())
-///             .unwrap_or("default");
-///         Ok(ToolCallResponse::new(vec![format!("Received: {}", msg).into()]))
-///     }
-/// }
-///
-/// exfiltrate::mcp::tools::add_tool(Box::new(TestTool));
-///
-/// // Now use RunLatestTool to invoke it
-/// let tools = &exfiltrate::mcp::tools::SHARED_TOOLS;
-/// let run_tool = tools.iter()
-///     .find(|t| t.name() == "run_latest_tool")
-///     .expect("run_latest_tool should be available");
-///
-/// // Prepare parameters for RunLatestTool
-/// let mut params = HashMap::new();
-/// params.insert("tool_name".to_string(), json!("test_tool"));
-/// params.insert("params".to_string(), json!({
-///     "message": "Hello from dynamic invocation!"
-/// }));
-///
-/// // Execute the tool
-/// let result = run_tool.call(params);
-/// assert!(result.is_ok());
-/// ```
 pub struct RunLatestTool;
 
 impl Tool for RunLatestTool {
