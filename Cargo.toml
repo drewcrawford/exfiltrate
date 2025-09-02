@@ -80,4 +80,3 @@ required-features = ["logwise"]
 
 
 [patch.crates-io]
-logwise = { path = "../logwise" }
