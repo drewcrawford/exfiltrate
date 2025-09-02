@@ -190,11 +190,11 @@ impl HTTPParser {
 }
 
 #[derive(Debug)]
-pub struct WebsocketWriteStream {
+pub (crate) struct WebsocketWriteStream {
     tcp: TcpStream,
 }
 #[derive(Debug)]
-pub struct WebsocketReadStream {
+pub (crate) struct WebsocketReadStream {
     tcp: TcpStream,
     tcp_layer_buf: Vec<u8>,
 }
@@ -220,24 +220,8 @@ impl WebsocketReadStream {
 ///
 /// This enum provides a unified interface for reading data from either WebSocket
 /// connections (which require frame parsing) or plain TCP streams.
-///
-/// # Example
-/// ```
-/// # #[cfg(feature = "transit")]
-/// # {
-/// use std::net::TcpStream;
-/// use exfiltrate::transit::http::ReadWebSocketOrStream;
-///
-/// // Create from a plain TCP stream
-/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let stream = TcpStream::connect("127.0.0.1:1984")?;
-/// let reader = ReadWebSocketOrStream::Stream(stream);
-/// # Ok(())
-/// # }
-/// # }
-/// ```
 #[derive(Debug)]
-pub enum ReadWebSocketOrStream {
+pub (crate) enum ReadWebSocketOrStream {
     /// WebSocket connection requiring frame parsing
     WebSocket(WebsocketReadStream),
     /// Plain TCP stream connection
@@ -247,24 +231,8 @@ pub enum ReadWebSocketOrStream {
 ///
 /// This enum provides a unified interface for writing data to either WebSocket
 /// connections (which require frame encoding) or plain TCP streams.
-///
-/// # Example
-/// ```
-/// # #[cfg(feature = "transit")]
-/// # {
-/// use std::net::TcpStream;
-/// use exfiltrate::transit::http::WriteWebSocketOrStream;
-///
-/// // Create from a plain TCP stream
-/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let stream = TcpStream::connect("127.0.0.1:1984")?;
-/// let writer = WriteWebSocketOrStream::Stream(stream);
-/// # Ok(())
-/// # }
-/// # }
-/// ```
 #[derive(Debug)]
-pub enum WriteWebSocketOrStream {
+pub (crate) enum WriteWebSocketOrStream {
     /// WebSocket connection requiring frame encoding
     WebSocket(WebsocketWriteStream),
     /// Plain TCP stream connection
@@ -401,7 +369,7 @@ pub struct Server {}
 ///
 /// This struct manages the SSE protocol formatting and ensures messages
 /// are properly formatted with the "data: " prefix and appropriate line endings.
-pub struct MessageQueue {
+pub(crate) struct MessageQueue {
     stream: TcpStream,
 }
 
