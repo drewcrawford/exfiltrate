@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Log capture and inspection tools for the transit proxy.
 //!
 //! This module provides functionality for capturing, storing, and searching through

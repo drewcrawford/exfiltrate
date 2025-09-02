@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 /*!
 A non-blocking synchronization primitive for one-time initialization.
 

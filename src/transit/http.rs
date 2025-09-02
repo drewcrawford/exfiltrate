@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::bidirectional_proxy::{Error, ReadTransport, WriteTransport};
 use crate::transit::transit_proxy::TransitProxy;
 use base64::Engine;

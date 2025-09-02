@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Dynamic tool discovery system for the Model Context Protocol.
 //!
 //! This module provides tools that enable runtime discovery and invocation of

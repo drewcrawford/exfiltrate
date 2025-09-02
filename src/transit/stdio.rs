@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Standard I/O server for the transit proxy.
 //!
 //! This module provides a server implementation that communicates via

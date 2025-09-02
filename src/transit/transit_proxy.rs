@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::jrpc::{Request, Response};
 use crate::mcp::tools::{ToolCallParams, ToolCallResponse, ToolList};
 use crate::transit::http::{ReadWebSocketOrStream, WriteWebSocketOrStream};

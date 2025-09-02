@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! JSON-RPC 2.0 protocol implementation.
 //!
 //! This module provides a complete implementation of the JSON-RPC 2.0 protocol,

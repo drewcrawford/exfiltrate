@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 /*!
 An embeddable Model Context Protocol (MCP) server for Rust.
 

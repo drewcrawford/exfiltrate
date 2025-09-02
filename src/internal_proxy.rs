@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Internal proxy module for bidirectional JSON-RPC communication.
 //!
 //! This module provides a cross-platform internal proxy that handles JSON-RPC

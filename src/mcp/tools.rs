@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Tool management and invocation system for the Model Context Protocol.
 //!
 //! This module provides the infrastructure for registering, discovering, and invoking

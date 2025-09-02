@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Proxy application for exfiltrate.
 //!
 //! This binary provides a standalone proxy server that bridges different transport

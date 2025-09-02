@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Bidirectional message-based proxy for communication between components.
 //!
 //! This module provides a framework for bidirectional, message-based communication

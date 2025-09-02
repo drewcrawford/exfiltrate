@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Transit proxy system for intercepting and forwarding JSON-RPC communication.
 //!
 //! The `transit` module provides a proxy infrastructure that sits between a client and

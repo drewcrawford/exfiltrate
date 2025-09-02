@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Platform abstraction layer for system APIs.
 //!
 //! This module provides unified access to platform-specific implementations of

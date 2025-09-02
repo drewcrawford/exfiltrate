@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Built-in tools available only in the transit proxy.
 //!
 //! This module provides tools that are exclusive to the proxy application and are not

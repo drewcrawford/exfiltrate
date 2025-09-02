@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Logwise logging integration for exfiltrate.
 //!
 //! This module provides integration with the logwise logging framework, allowing

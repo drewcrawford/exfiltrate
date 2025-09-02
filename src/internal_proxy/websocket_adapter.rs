@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! WebSocket adapter for WebAssembly targets.
 //!
 //! This module provides WebSocket-based transport adapters for the internal proxy

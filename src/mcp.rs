@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Model Context Protocol (MCP) implementation.
 //!
 //! This module provides the core implementation of the Model Context Protocol, enabling

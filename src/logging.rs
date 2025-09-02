@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Cross-platform logging utilities for the exfiltrate library.
 //!
 //! This module provides a simple, platform-agnostic logging interface that writes
