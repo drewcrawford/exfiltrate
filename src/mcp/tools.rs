@@ -222,7 +222,7 @@ pub(crate) static SHARED_TOOLS: LazyLock<Vec<Box<dyn Tool>>> = LazyLock::new(|| 
 /// let json = serde_json::to_string(&empty_list).unwrap();
 /// assert!(json.contains("\"tools\":[]"));
 /// ```
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ToolList {
     /// The list of available tools with their metadata
     pub(crate) tools: Vec<ToolInfo>,
@@ -250,7 +250,7 @@ impl ToolList {
 ///
 /// Contains all the information needed for an agent to understand
 /// and invoke a tool.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ToolInfo {
     /// The unique name of the tool
     name: String,
@@ -947,5 +947,71 @@ impl fmt::Display for Argument {
             if self.required { "required" } else { "optional" },
             self.description
         )
+    }
+}
+
+// ToolContent boilerplate - appears in order of definition above
+
+impl Default for ToolContent {
+    fn default() -> Self {
+        ToolContent::Text(String::new())
+    }
+}
+
+impl fmt::Display for ToolContent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ToolContent::Text(text) => write!(f, "{}", text),
+        }
+    }
+}
+
+impl AsRef<str> for ToolContent {
+    fn as_ref(&self) -> &str {
+        match self {
+            ToolContent::Text(text) => text,
+        }
+    }
+}
+
+impl std::ops::Deref for ToolContent {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            ToolContent::Text(text) => text,
+        }
+    }
+}
+
+// ToolList boilerplate - appears in order of definition above
+
+impl Default for ToolList {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl fmt::Display for ToolList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ToolList({} tools)", self.tools.len())
+    }
+}
+
+impl From<Vec<ToolInfo>> for ToolList {
+    fn from(tools: Vec<ToolInfo>) -> Self {
+        ToolList { tools }
+    }
+}
+
+impl From<ToolList> for Vec<ToolInfo> {
+    fn from(tool_list: ToolList) -> Self {
+        tool_list.tools
+    }
+}
+
+impl AsRef<Vec<ToolInfo>> for ToolList {
+    fn as_ref(&self) -> &Vec<ToolInfo> {
+        &self.tools
     }
 }
