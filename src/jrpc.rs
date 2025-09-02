@@ -63,6 +63,7 @@ impl Request {
     /// * `params` - Optional parameters for the method call
     /// * `id` - Unique identifier for this request
     ///
+    #[cfg(feature = "transit")]
     pub fn new(method: String, params: Option<serde_json::Value>, id: serde_json::Value) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
@@ -249,6 +250,7 @@ impl Error {
     /// * `message` - Human-readable error message
     /// * `data` - Optional additional error information
     ///
+    #[cfg(feature = "transit")]
     pub fn new(code: i32, message: String, data: Option<serde_json::Value>) -> Self {
         Self {
             code,
@@ -261,6 +263,7 @@ impl Error {
     ///
     /// This error should be returned when invalid JSON was received by the server.
     ///
+    #[cfg(feature = "transit")]
     pub fn parse_error() -> Self {
         Self {
             code: -32700,
@@ -273,6 +276,7 @@ impl Error {
     ///
     /// This error should be returned when the JSON sent is not a valid Request object.
     ///
+    #[cfg(feature = "transit")]
     pub fn invalid_request() -> Self {
         Self {
             code: -32600,
@@ -338,6 +342,7 @@ impl Error {
     ///
     /// * `error` - Any error that implements `std::error::Error`
     ///
+    #[cfg(feature = "transit")]
     pub fn from_error<E: std::error::Error>(error: E) -> Self {
         Self {
             code: -32603, // Internal error
@@ -355,6 +360,7 @@ impl Error {
     ///
     /// * `message` - Description of the internal error
     ///
+    #[cfg(feature = "transit")]
     pub fn internal_error(message: String) -> Self {
         Self {
             code: -32603,

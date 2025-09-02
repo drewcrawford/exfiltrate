@@ -225,7 +225,6 @@ mod logging;
 #[cfg(feature = "logwise")]
 pub mod logwise;
 pub mod mcp;
-mod messages;
 mod once_nonlock;
 mod sys;
 #[cfg(feature = "transit")]
