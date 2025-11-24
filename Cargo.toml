@@ -1,81 +1,29 @@
-[package]
-name = "exfiltrate"
+[workspace]
+members = ["exfiltrate_internal", "exfiltrate"]
+resolver = "3"
+default-members = ["exfiltrate"]
+
+
+
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 authors = ["Drew Crawford <drew@sealedabstract.com>"]
-description = "An embeddable MCP server for Rust."
+description = "An embeddable debug tool for Rust."
 homepage = "https://sealedabstract.com/code/exfiltrate"
 repository = "https://github.com/drewcrawford/exfiltrate"
 license = "MIT OR Apache-2.0"
-keywords = ["mcp", "websocket", "http", "agents", "claude"]
+keywords = ["skills", "websocket", "http", "agents", "claude"]
 categories = ["development-tools::debugging", "wasm","web-programming::http-server", "web-programming::websocket"]
 exclude = [".*"]
 rust-version = "1.85.1"
 
-[dependencies]
-serde = { version = "1.0.219", features= ["derive"] }
-serde_json = "1.0.143"
-thiserror = "2.0.16"
-logwise = { version = "0.3.0", optional = true }
-regex = {version = "1.11.2", optional=true}
-# for websocket accept
-sha1 = { version = "0.10.6", optional = true}
-base64 = { version = "0.22.1", optional = true }
-
-[dev-dependencies]
-logwise = "0.3.0"
-
-[target.'cfg(target_arch="wasm32")'.dependencies]
-wasm_thread = "0.3"
-web-sys = {version = "0.3", features = [
-    "WebSocket",
-    "ErrorEvent",
-    "CloseEvent",
-    "BinaryType"
-]}
-# for spawn_local
-wasm-bindgen-futures = "0.4"
-# for closure
-wasm-bindgen = "0.2"
-continue = "0.1.1"
-# for websocket routing
-continue_stream = {version = "0.1.0" }
-
-[features]
-transit = ["dep:regex","dep:base64", "dep:sha1"] # primarily used for logwise parsing
-logwise = ["dep:logwise"]
-
-[[bin]]
-name = "proxy"
-path = "src/proxy_app.rs"
-required-features = ["transit"]
+[workspace.dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+# rmp-serde is used for binary serialization (wire protocol and structured responses)
+rmp-serde = "1.3"
+rgb = { version = "0.8.52", features=["serde"] }
+exfiltrate-internal = { path = "exfiltrate_internal" }
 
 
-[[example]]
-name = "tools"
-path = "examples/tools.rs"
-required-features = ["transit"]
-
-[[example]]
-name = "disconnected"
-path = "examples/disconnected.rs"
-required-features = ["transit"]
-
-[[example]]
-name = "stdio"
-path = "examples/stdio.rs"
-required-features = ["transit"]
-
-[[example]]
-name = "log_exfiltration"
-path = "examples/log_exfiltration.rs"
-required-features = ["transit","logwise"]
-
-[[example]]
-name = "internal_only"
-path = "examples/internal_only.rs"
-required-features = ["logwise"]
-
-
-
-[patch.crates-io]

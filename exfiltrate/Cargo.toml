@@ -1,0 +1,53 @@
+[package]
+name = "exfiltrate"
+version.workspace = true
+edition.workspace = true
+default-run = "exfiltrate"
+
+[features]
+logwise = ["dep:logwise"]
+
+[dependencies]
+serde.workspace = true
+rmp-serde.workspace = true
+rgb.workspace = true
+exfiltrate-internal.workspace = true
+logwise = {version = "0.3.0", optional = true}
+wasm_safe_mutex = "0.1.0"
+# Dependencies from exfiltrate_proxy
+sha1 = "0.10.6"
+base64 = "0.22.1"
+
+[target.'cfg(not(target_arch="wasm32"))'.dependencies]
+# Dependencies from exfiltrate_cli (not needed for WASM)
+rand = "0.9.2"
+webp = "0.3.1"
+bytemuck = "1.24.0"
+
+[target.'cfg(target_arch="wasm32")'.dependencies]
+web-sys = { version = "0.3.82", features=["WebSocket","BinaryType","ErrorEvent","CloseEvent",
+# for fetch?
+    "RequestInit","RequestMode","Request","Response"
+] }
+wasm-bindgen-futures = "0.4.55"
+continue = "0.1.1"
+wasm-bindgen = "0.2.105"
+continue_stream = "0.1.0"
+wasm_thread = "0.3.3"
+
+[dev-dependencies]
+rgb.workspace = true
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "exfiltrate"
+path = "src/bin/exfiltrate/main.rs"
+
+[[bin]]
+name = "exfiltrate_proxy"
+path = "src/bin/proxy/main.rs"
+
+[[example]]
+name = "debug"
+path = "examples/debug.rs"

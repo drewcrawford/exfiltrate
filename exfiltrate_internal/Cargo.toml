@@ -1,0 +1,22 @@
+[package]
+name = "exfiltrate-internal"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+rmp-serde.workspace = true
+rgb.workspace = true
+
+wasm_safe_mutex = "0.1.0"
+
+
+
+
+
+
+[lib]
+path = "src/lib.rs"
+
+
