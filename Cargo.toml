@@ -17,7 +17,7 @@ license = "MIT OR Apache-2.0"
 keywords = ["skills", "websocket", "http", "agents", "claude"]
 categories = ["development-tools::debugging", "wasm"]
 exclude = [".*"]
-rust-version = "1.85.1"
+rust-version = "1.87.0"
 
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
