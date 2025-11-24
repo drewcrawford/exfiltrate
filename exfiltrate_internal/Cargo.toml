@@ -2,7 +2,14 @@
 name = "exfiltrate_internal"
 version.workspace = true
 edition.workspace = true
-publish = false
+authors.workspace = true
+description = "Internal utilities for the exfiltrate crate."
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 serde.workspace = true
