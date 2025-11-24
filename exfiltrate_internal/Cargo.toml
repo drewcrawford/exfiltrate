@@ -1,5 +1,5 @@
 [package]
-name = "exfiltrate-internal"
+name = "exfiltrate_internal"
 version.workspace = true
 edition.workspace = true
 publish = false
