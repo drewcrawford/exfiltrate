@@ -10,7 +10,6 @@
 //! 3.  **Remote Dispatch**: If not local, connects to the remote application via TCP and sends an RPC.
 //! 4.  **Response Handling**: Receives the response (text, files, or images) and handles it (printing or saving to disk).
 
-use wire::client::CLIENT;
 use exfiltrate_internal::command::{Command, Response};
 use exfiltrate_internal::rpc::{CommandInvocation, RPC};
 use local_commands::list::List;
@@ -19,6 +18,7 @@ use rand::distr::Alphanumeric;
 use std::io::Write;
 use std::path::PathBuf;
 use webp::PixelLayout;
+use wire::client::CLIENT;
 
 mod help;
 mod local_commands;
