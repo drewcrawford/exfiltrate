@@ -4,20 +4,33 @@ use std::mem::MaybeUninit;
 use std::net::TcpStream;
 use std::time::Duration;
 
+/// The default address for the exfiltrate server.
 pub const ADDR: &str = "127.0.0.1:1337";
+/// The default backoff duration for retry loops.
 pub const BACKOFF_DURATION: Duration = Duration::from_millis(10);
 
+/// The status of a non-blocking read operation.
 pub enum ReadStatus {
+    /// The read completed with the full message.
     Completed(Vec<u8>),
+    /// The read made progress but the message is not complete.
     Progress,
+    /// The read would block (no data available).
     WouldBlock,
 }
 
+/// Sends an RPC message over a TCP stream.
+///
+/// The message is serialized to MessagePack and sent as a length-prefixed frame.
 pub fn send_socket_rpc(msg: RPC, stream: &mut TcpStream) -> std::io::Result<()> {
     let msgpack_bytes = rmp_serde::to_vec(&msg).unwrap();
     send_socket_frame(&msgpack_bytes, stream)?;
     Ok(())
 }
+
+/// Sends a raw byte frame over a TCP stream.
+///
+/// The frame is prefixed with a 4-byte big-endian length.
 pub fn send_socket_frame(msg: &[u8], stream: &mut TcpStream) -> std::io::Result<()> {
     let len: u32 = msg.len().try_into().unwrap();
     // Do not toggle blocking mode to avoid race with reader thread
@@ -48,6 +61,10 @@ fn write_all_robust(stream: &mut TcpStream, mut buf: &[u8]) -> std::io::Result<(
     Ok(())
 }
 
+/// A buffer for receiving length-prefixed messages over a stream.
+///
+/// This struct accumulates bytes from a non-blocking stream until a complete
+/// message is available.
 pub struct InFlightMessage {
     bytes: Vec<u8>,
     buf: [MaybeUninit<u8>; 1024],
@@ -60,6 +77,7 @@ impl Default for InFlightMessage {
 }
 
 impl InFlightMessage {
+    /// Creates a new empty message buffer.
     pub fn new() -> InFlightMessage {
         InFlightMessage {
             bytes: vec![],
@@ -67,10 +85,16 @@ impl InFlightMessage {
         }
     }
 
+    /// Appends raw bytes to the message buffer.
     pub fn add_bytes(&mut self, bytes: &[u8]) {
         self.bytes.extend_from_slice(bytes);
     }
 
+    /// Reads from the stream and returns the status of the read operation.
+    ///
+    /// Returns `ReadStatus::Completed` when a full message is available,
+    /// `ReadStatus::Progress` when bytes were read but the message is incomplete,
+    /// or `ReadStatus::WouldBlock` when no data is available.
     pub fn read_stream(&mut self, stream: &mut TcpStream) -> std::io::Result<ReadStatus> {
         use std::io::Read;
         // Check if we already have a message buffered
@@ -126,6 +150,7 @@ impl InFlightMessage {
         }
     }
 
+    /// Returns the expected message length from the header, if available.
     pub fn expected_length(&self) -> Option<u32> {
         if self.bytes.len() < 4 {
             None
@@ -136,6 +161,7 @@ impl InFlightMessage {
         }
     }
 
+    /// Returns the number of payload bytes currently buffered (excluding the length header).
     pub fn current_length(&self) -> usize {
         if self.bytes.len() < 4 {
             0

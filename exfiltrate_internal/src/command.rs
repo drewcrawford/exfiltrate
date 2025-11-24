@@ -28,15 +28,22 @@ pub trait Command: 'static + Send + Sync {
     fn execute(&self, args: Vec<String>) -> Result<Response, Response>;
 }
 
-/**
-A response from a command
-*/
-#[derive(Debug, Serialize, Deserialize)]
+/// A response from a command execution.
+///
+/// Commands can return various types of data depending on their purpose.
+/// The response type is extensible (`#[non_exhaustive]`) to allow for future additions.
+///
+/// Use the `From` implementations to easily create responses from common types.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum Response {
+    /// A text string response.
     String(String),
+    /// Raw binary data (e.g., MessagePack serialized output).
     Bytes(Vec<u8>),
+    /// One or more files to be saved on the client.
     Files(Vec<FileInfo>),
+    /// One or more images to be displayed or saved.
     Images(Vec<ImageInfo>),
 }
 
@@ -66,6 +73,13 @@ pub struct ImageInfo {
 }
 
 impl ImageInfo {
+    /// Creates a new `ImageInfo` from raw RGBA8 pixel data.
+    ///
+    /// The height is automatically calculated from the data length and width.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `data.len()` is not a multiple of `width`.
     pub fn new(data: Vec<RGBA8>, width: u32, remark: Option<String>) -> ImageInfo {
         assert!(
             data.len().is_multiple_of(width as usize),
@@ -89,6 +103,7 @@ impl Display for ImageInfo {
 }
 
 impl FileInfo {
+    /// Creates a new `FileInfo` with the given extension, remark, and contents.
     pub fn new(proposed_extension: String, remark: Option<String>, contents: Vec<u8>) -> FileInfo {
         FileInfo {
             proposed_extension,
@@ -114,6 +129,11 @@ impl Display for FileInfo {
 }
 
 impl Response {
+    /// Converts the response into a string.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the response is not a `String` variant.
     pub fn into_string(self) -> String {
         match self {
             Response::String(s) => s,
@@ -123,6 +143,9 @@ impl Response {
         }
     }
 
+    /// Serializes a value to MessagePack bytes and returns it as a `Bytes` response.
+    ///
+    /// Returns an error response if serialization fails.
     pub fn from_serialize<S: Serialize>(s: &S) -> Result<Response, Response> {
         match rmp_serde::to_vec(s) {
             Ok(bytes) => Ok(Response::Bytes(bytes)),
@@ -130,6 +153,10 @@ impl Response {
         }
     }
 
+    /// Extracts binary data from the response for wire transmission.
+    ///
+    /// This is used by the wire protocol to send large binary data separately
+    /// from the metadata. The extracted data is replaced with empty vectors.
     pub fn split_data(&mut self) -> Vec<Vec<u8>> {
         match self {
             Response::String(_) => vec![],
@@ -170,6 +197,10 @@ impl Response {
         }
     }
 
+    /// Merges binary data back into the response after wire transmission.
+    ///
+    /// This is the inverse of [`split_data`](Self::split_data) and is used
+    /// to reconstruct the full response on the receiving end.
     pub fn merge_data(&mut self, parts: Vec<Vec<u8>>) {
         // We need to consume parts in the same order they were produced
         // Since we push to `parts` in order, we should probably reverse it to pop, or use an iterator.
