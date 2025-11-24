@@ -1,3 +1,8 @@
+//! Logwise integration for log capture and retrieval.
+//!
+//! This module provides integration with the `logwise` logging framework, allowing
+//! exfiltrate to capture and retrieve log records from the running application.
+
 use exfiltrate_internal::command::{Command, FileInfo, Response};
 use logwise::LogRecord;
 use std::pin::Pin;
