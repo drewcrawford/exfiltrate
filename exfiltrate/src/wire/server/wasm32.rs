@@ -53,6 +53,9 @@ fn handle_msg(data: &[u8]) -> Result<RPC, String> {
                 RPC::CommandResponse(r) => {
                     return Err(format!("Expected command, got: {:?}", r));
                 }
+                _ => {
+                    return Err("Unknown RPC variant received".to_string());
+                }
             }
         }
         Err(e) => {

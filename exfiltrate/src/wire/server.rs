@@ -53,7 +53,13 @@ fn do_stream(mut stream: TcpStream) {
                             RPC::CommandResponse(_response) => {
                                 todo!("Server-side CommandResponse not yet handled")
                             }
+                            _ => {
+                                eprintln!("Unknown RPC variant received");
+                            }
                         }
+                    }
+                    Ok(_) => {
+                        eprintln!("Unknown ReadStatus variant received");
                     }
                 }
             }

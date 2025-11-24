@@ -109,7 +109,13 @@ impl Client {
                                         }
                                     }
                                 }
+                                _ => {
+                                    eprintln!("Unknown RPC variant received");
+                                }
                             }
+                        }
+                        Ok(_) => {
+                            eprintln!("Unknown ReadStatus variant received");
                         }
                     }
                 }
@@ -178,7 +184,7 @@ impl Client {
                                                     std::thread::sleep(BACKOFF_DURATION);
                                                 }
                                                 exfiltrate_internal::wire::ReadStatus::Progress => {
-                                                     // Reuse the progress reporting logic from the outer loop if possible, 
+                                                     // Reuse the progress reporting logic from the outer loop if possible,
                                                      // or just ignore for now as attachments are parts of the "response"
                                                      // actually, for large files, these attachments ARE the large part.
                                                      // So we should probably report progress.
@@ -202,6 +208,9 @@ impl Client {
                                                         last_print = std::time::Instant::now();
                                                     }
                                                 }
+                                                _ => {
+                                                    eprintln!("Unknown ReadStatus variant received");
+                                                }
                                             }
                                         }
                                     }
@@ -213,7 +222,7 @@ impl Client {
                             }
                         }
                         _ => {
-                            todo!("Other messages not currently handled")
+                            todo!("Other RPC messages not currently handled")
                         }
                     }
                 }
@@ -239,6 +248,9 @@ impl Client {
                 }
                 exfiltrate_internal::wire::ReadStatus::WouldBlock => {
                     std::thread::sleep(BACKOFF_DURATION);
+                }
+                _ => {
+                    eprintln!("Unknown ReadStatus variant received");
                 }
             }
         }

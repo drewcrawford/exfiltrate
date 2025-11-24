@@ -116,6 +116,9 @@ fn do_stream(
                             break;
                         }
                     }
+                    Ok(_) => {
+                        eprintln!("Unknown ReadStatus variant received");
+                    }
                 }
             }
         })
