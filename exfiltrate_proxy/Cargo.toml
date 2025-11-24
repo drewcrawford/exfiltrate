@@ -2,6 +2,15 @@
 name = "exfiltrate_proxy"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+description = "Proxy application for the exfiltrate crate."
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
 
 [[bin]]
 name = "exfiltrate_proxy"
