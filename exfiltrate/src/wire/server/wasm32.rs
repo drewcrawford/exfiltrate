@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::wire::server::do_command;
 use exfiltrate_internal::rpc::RPC;
 use std::sync::{Arc, LazyLock};

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::help::HelpTopic;
 
 /// Help topic for integrating exfiltrate into a project.

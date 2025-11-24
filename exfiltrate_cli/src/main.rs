@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! The main entry point for the `exfiltrate` CLI tool.
 //!
 //! This binary acts as a client that connects to a running application

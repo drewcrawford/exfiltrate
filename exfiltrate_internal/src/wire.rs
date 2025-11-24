@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::rpc::RPC;
 use std::io::Write;
 use std::mem::MaybeUninit;

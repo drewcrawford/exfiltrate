@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use exfiltrate::command::Command;
 use exfiltrate_internal::command::{FileInfo, ImageInfo, Response};
 

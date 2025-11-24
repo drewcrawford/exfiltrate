@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Internal implementation details for the exfiltrate debugging framework.
 //!
 //! This crate provides the core types and wire protocol used by the exfiltrate system.

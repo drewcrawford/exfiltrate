@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::command::Response;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;

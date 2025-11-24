@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Local commands are executed directly by the CLI tool, as opposed to remote commands
 //! which are executed by the target application.
 //!

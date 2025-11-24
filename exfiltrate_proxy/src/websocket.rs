@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use WebsocketFrameError::Rejected;
 use std::collections::HashMap;
 use std::io::{Read, Write};

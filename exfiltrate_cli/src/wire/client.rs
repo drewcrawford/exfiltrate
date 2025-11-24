@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use exfiltrate_internal::command::Response;
 use exfiltrate_internal::rpc::{CommandResponse, RPC};
 use exfiltrate_internal::wire::{BACKOFF_DURATION, InFlightMessage, send_socket_rpc};

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use exfiltrate_internal::wire::{ADDR, BACKOFF_DURATION, InFlightMessage};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! The help module provides a system for displaying documentation and guides
 //! within the exfiltrate CLI.
 //!

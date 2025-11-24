@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Exfiltrate is a remote debugging framework for Rust applications.
 //!
 //! It allows you to inspect and control a running application (even in WASM/browser environments)
