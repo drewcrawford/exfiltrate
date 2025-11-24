@@ -48,12 +48,8 @@ fn handle_msg(data: &[u8]) -> Result<RPC, String> {
 
                     Ok(RPC::CommandResponse(reply))
                 }
-                RPC::CommandResponse(r) => {
-                    Err(format!("Expected command, got: {:?}", r))
-                }
-                _ => {
-                    Err("Unknown RPC variant received".to_string())
-                }
+                RPC::CommandResponse(r) => Err(format!("Expected command, got: {:?}", r)),
+                _ => Err("Unknown RPC variant received".to_string()),
             }
         }
         Err(e) => Err(format!("{:?}", e)),
@@ -131,9 +127,7 @@ async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
                         let s = create_web_socket().await;
                         match s {
                             Ok(_) => {
-                                web_sys::console::log_1(
-                                    &" WebSocket created successfully".into(),
-                                );
+                                web_sys::console::log_1(&" WebSocket created successfully".into());
                                 socket = Some(s);
                             }
                             Err(e) => {
