@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 /// An item in the command list, representing a single available command.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct ListItem {
     /// The name of the command.
     pub name: String,

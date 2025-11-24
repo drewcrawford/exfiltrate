@@ -276,6 +276,13 @@ impl From<ImageInfo> for Response {
     }
 }
 
+impl Default for Response {
+    /// Returns an empty string response.
+    fn default() -> Self {
+        Response::String(String::new())
+    }
+}
+
 impl Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
