@@ -67,6 +67,8 @@ pub struct ImageInfo {
     /// The width of the image in pixels.
     pub width: u32,
     /// The height of the image in pixels.
+    ///
+    /// When using [`ImageInfo::new`], this is automatically calculated from `data.len() / width`.
     pub height: u32,
     /// An optional remark or description to display to the user.
     pub remark: Option<String>,
