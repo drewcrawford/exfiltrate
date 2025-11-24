@@ -37,7 +37,7 @@
 //!
 //! # Quick start
 //!
-//! claude "Run the exfiltrate command, then integrate the library into my program."
+//! claude "Run the exfiltrate_cli command, then integrate the library into my program."
 //!
 //! ## Progressive disclosure
 //!
