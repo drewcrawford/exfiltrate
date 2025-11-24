@@ -1,6 +1,6 @@
 # exfiltrate_proxy
 
-A WebSocket/TCP bridge that enables debugging of WebAssembly applications running in browsers using the `exfiltrate` CLI.
+A WebSocket/TCP bridge that enables debugging of WebAssembly applications running in browsers using the `exfiltrate` crate.
 
 ## Overview
 
