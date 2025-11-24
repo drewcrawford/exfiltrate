@@ -15,7 +15,7 @@ homepage = "https://sealedabstract.com/code/exfiltrate"
 repository = "https://github.com/drewcrawford/exfiltrate"
 license = "MIT OR Apache-2.0"
 keywords = ["skills", "websocket", "http", "agents", "claude"]
-categories = ["development-tools::debugging", "wasm","web-programming::http-server", "web-programming::websocket"]
+categories = ["development-tools::debugging", "wasm"]
 exclude = [".*"]
 rust-version = "1.85.1"
 
