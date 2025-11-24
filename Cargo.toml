@@ -1,5 +1,5 @@
 [workspace]
-members = ["exfiltrate_internal", "exfiltrate"]
+members = ["exfiltrate_internal", "exfiltrate", "exfiltrate_cli", "exfiltrate_proxy"]
 resolver = "3"
 default-members = ["exfiltrate"]
 
