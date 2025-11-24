@@ -12,8 +12,6 @@ use web_sys::{Request, RequestInit, RequestMode, Response, WorkerGlobalScope};
 
 pub fn wasm32_go() {
     patch_close();
-    let (send_s, send_r) = std::sync::mpsc::channel::<u8>();
-    let (rcv_s, rcv_r) = continue_stream::continuation::<u8>();
     let thread_result = wasm_thread::Builder::new()
         .name("exfiltrate::wasm".to_string())
         .spawn(|| {
@@ -27,7 +25,7 @@ pub fn wasm32_go() {
             });
         });
     match thread_result {
-        Ok(join_handle) => {}
+        Ok(_join_handle) => {}
         Err(e) => {
             web_sys::console::error_1(&JsValue::from_str(&format!("{:?}", e)));
             panic!("{:?}", e);
@@ -51,16 +49,14 @@ fn handle_msg(data: &[u8]) -> Result<RPC, String> {
                     Ok(RPC::CommandResponse(reply))
                 }
                 RPC::CommandResponse(r) => {
-                    return Err(format!("Expected command, got: {:?}", r));
+                    Err(format!("Expected command, got: {:?}", r))
                 }
                 _ => {
-                    return Err("Unknown RPC variant received".to_string());
+                    Err("Unknown RPC variant received".to_string())
                 }
             }
         }
-        Err(e) => {
-            return Err(format!("{:?}", e));
-        }
+        Err(e) => Err(format!("{:?}", e)),
     }
 }
 
@@ -82,7 +78,7 @@ pub async fn debug_ws_handshake_in_worker(ws_url: &str) -> Result<(), JsValue> {
         ws_url.to_string()
     };
 
-    let mut opts = RequestInit::new();
+    let opts = RequestInit::new();
     opts.set_method("GET");
     // CORS mode is usually fine; tweak if you know you're same-origin
     opts.set_mode(RequestMode::Cors);
@@ -136,7 +132,7 @@ async fn worker_thread(receiver: continue_stream::Receiver<WorkerMessage>) {
                         match s {
                             Ok(_) => {
                                 web_sys::console::log_1(
-                                    (&" WebSocket created successfully".into()),
+                                    &" WebSocket created successfully".into(),
                                 );
                                 socket = Some(s);
                             }
@@ -175,6 +171,7 @@ enum WorkerMessage {
     Reconnect,
 }
 
+#[allow(clippy::type_complexity)]
 static SEND_WORKER_MESSAGE: LazyLock<(
     continue_stream::Sender<WorkerMessage>,
     Mutex<Option<continue_stream::Receiver<WorkerMessage>>>,
@@ -219,7 +216,7 @@ impl<T> Clone for OneShot<T> {
     }
 }
 
-const WEB_ADDR: &'static str = "ws://localhost:1338";
+const WEB_ADDR: &str = "ws://localhost:1338";
 
 async fn create_web_socket() -> Result<web_sys::WebSocket, String> {
     let ws = web_sys::WebSocket::new(WEB_ADDR);
@@ -245,7 +242,7 @@ async fn create_web_socket() -> Result<web_sys::WebSocket, String> {
                 });
                 web_sys::console::log_1(&"Websocket error:".into());
                 web_sys::console::log_1(&event);
-                move_func_sender.send_if_needed(Err("Cannot connect to server".to_string()).into());
+                move_func_sender.send_if_needed(Err("Cannot connect to server".to_string()));
             }) as Box<dyn FnMut(_)>);
             ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
             onerror_callback.forget(); //leak the closure
@@ -303,7 +300,6 @@ async fn create_web_socket() -> Result<web_sys::WebSocket, String> {
                     web_sys::console::log_1(&str.into());
                     unimplemented!("This is not currently supported");
                 }
-                return;
             }) as Box<dyn FnMut(_)>);
             ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
             onmessage_callback.forget(); //leak the closure
@@ -311,6 +307,6 @@ async fn create_web_socket() -> Result<web_sys::WebSocket, String> {
             let f = func_fut.await;
             f.map(|_| ws)
         }
-        Err(e) => Err(format!("{:?}", e).into()),
+        Err(e) => Err(format!("{:?}", e)),
     }
 }

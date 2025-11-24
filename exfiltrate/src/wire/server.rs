@@ -2,10 +2,15 @@
 mod wasm32;
 
 use crate::commands::COMMANDS;
-use exfiltrate_internal::rpc::{CommandInvocation, CommandResponse, RPC};
-use exfiltrate_internal::wire::{ADDR, BACKOFF_DURATION, InFlightMessage, send_socket_rpc};
-use std::net::{TcpListener, TcpStream};
+use exfiltrate_internal::rpc::{CommandInvocation, CommandResponse};
 use std::sync::LazyLock;
+
+#[cfg(not(target_arch = "wasm32"))]
+use exfiltrate_internal::rpc::RPC;
+#[cfg(not(target_arch = "wasm32"))]
+use exfiltrate_internal::wire::{ADDR, BACKOFF_DURATION, InFlightMessage, send_socket_rpc};
+#[cfg(not(target_arch = "wasm32"))]
+use std::net::{TcpListener, TcpStream};
 
 /// The exfiltrate server.
 ///
