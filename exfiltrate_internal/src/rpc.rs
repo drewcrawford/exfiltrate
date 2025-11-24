@@ -1,8 +1,10 @@
 use crate::command::Response;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 
 /// Remote procedure call message types for communication between client and server.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum RPC {
     /// A command invocation request from the client.
     Command(CommandInvocation),
@@ -11,7 +13,7 @@ pub enum RPC {
 }
 
 /// A request to invoke a command on the server.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CommandInvocation {
     /// The name of the command to invoke.
     pub name: String,
@@ -22,7 +24,7 @@ pub struct CommandInvocation {
 }
 
 /// A response to a command invocation.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CommandResponse {
     /// Whether the command succeeded.
     pub success: bool,
@@ -54,5 +56,31 @@ impl CommandInvocation {
             args,
             reply_id,
         }
+    }
+}
+
+impl Display for RPC {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RPC::Command(cmd) => write!(f, "Command({})", cmd),
+            RPC::CommandResponse(resp) => write!(f, "CommandResponse({})", resp),
+        }
+    }
+}
+
+impl Display for CommandInvocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.args.is_empty() {
+            write!(f, "{} [id={}]", self.name, self.reply_id)
+        } else {
+            write!(f, "{} {:?} [id={}]", self.name, self.args, self.reply_id)
+        }
+    }
+}
+
+impl Display for CommandResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let status = if self.success { "ok" } else { "err" };
+        write!(f, "[id={}] {}: {}", self.reply_id, status, self.response)
     }
 }

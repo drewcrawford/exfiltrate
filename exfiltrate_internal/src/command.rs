@@ -34,7 +34,7 @@ pub trait Command: 'static + Send + Sync {
 /// The response type is extensible (`#[non_exhaustive]`) to allow for future additions.
 ///
 /// Use the `From` implementations to easily create responses from common types.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum Response {
     /// A text string response.
@@ -48,7 +48,7 @@ pub enum Response {
 }
 
 /// Information about a file to be returned to the client.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FileInfo {
     /// The proposed extension for the file (e.g. "txt", "png").
     /// The client will generate a random filename with this extension.
@@ -60,7 +60,7 @@ pub struct FileInfo {
 }
 
 /// Information about an image to be returned to the client.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ImageInfo {
     /// The raw image data in RGBA8 format.
     pub data: Vec<RGBA8>,

@@ -10,6 +10,8 @@ pub const ADDR: &str = "127.0.0.1:1337";
 pub const BACKOFF_DURATION: Duration = Duration::from_millis(10);
 
 /// The status of a non-blocking read operation.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum ReadStatus {
     /// The read completed with the full message.
     Completed(Vec<u8>),
