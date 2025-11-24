@@ -12,7 +12,7 @@ Claude Code, Codex, Gemini, etc.
 
 Exfiltrate provides a simple, self-contained, and embeddable server implementation,
 primarily motivated by the need to embed in debuggable programs. It is designed to be
-easy to use, easy to extend with custom tools, and easy to integrate with existing Rust codebases,
+easy to use, easy to extend with custom commands, and easy to integrate with existing Rust codebases,
 
 Unlike traditional debuggers (gdb, lldb) which require ptrace/OS support, exfiltrate
 works by embedding a small server thread into your application. This allows it to work
@@ -34,7 +34,7 @@ Exfiltrate is the answer to these frequently-asked questions:
 * How can I quickly expose internal state or operations of my program to a CLI?
 * How can I add a custom debug command into debug builds of my program?
 * How can I interact with my program running in a foreign environment, like a mobile app or browser?
-* How can I get a steer an LLM agent to reason about my program's state at runtime?
+* How can I steer an LLM agent to reason about my program's state at runtime?
 
 ## Quick start
 

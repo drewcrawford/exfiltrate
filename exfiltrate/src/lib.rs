@@ -10,7 +10,7 @@
 //!
 //! Exfiltrate provides a simple, self-contained, and embeddable server implementation,
 //! primarily motivated by the need to embed in debuggable programs. It is designed to be
-//! easy to use, easy to extend with custom tools, and easy to integrate with existing Rust codebases,
+//! easy to use, easy to extend with custom commands, and easy to integrate with existing Rust codebases,
 //!
 //! Unlike traditional debuggers (gdb, lldb) which require ptrace/OS support, exfiltrate
 //! works by embedding a small server thread into your application. This allows it to work
@@ -32,7 +32,7 @@
 //! * How can I quickly expose internal state or operations of my program to a CLI?
 //! * How can I add a custom debug command into debug builds of my program?
 //! * How can I interact with my program running in a foreign environment, like a mobile app or browser?
-//! * How can I get a steer an LLM agent to reason about my program's state at runtime?
+//! * How can I steer an LLM agent to reason about my program's state at runtime?
 //!
 //! # Quick start
 //!
@@ -109,10 +109,26 @@
 //! # Feature Flags
 //!
 //! - `logwise` - Enables integration with the `logwise` logging framework for log capture.
+//!
+//! # Response Types
+//!
+//! Commands can return different response types:
+//!
+//! - **String** - Text output (most common)
+//! - **Files** - Binary files via [`FileInfo`](command::FileInfo)
+//! - **Images** - RGBA images via [`ImageInfo`](command::ImageInfo)
+//!
+//! For file and image responses, use the types from [`command`] module. Images use
+//! [`RGBA8`](rgb::RGBA8) from the re-exported [`rgb`] crate.
+//!
+//! For detailed examples of all response types, run `exfiltrate help custom_commands` in the CLI.
 
 #[cfg(feature = "logwise")]
 mod logwise;
 
+/// Re-export of the [`rgb`](https://docs.rs/rgb) crate for image pixel types.
+///
+/// Use [`rgb::RGBA8`] when constructing [`ImageInfo`](command::ImageInfo) responses.
 pub use rgb;
 
 mod commands;
