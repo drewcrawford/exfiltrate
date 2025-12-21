@@ -38,15 +38,16 @@ Exfiltrate is the answer to these frequently-asked questions:
 
 ## Quick start
 
-```
-claude "Run the exfiltrate command, then integrate the library into my program."
-```
+claude "Run the exfiltrate_cli command, then integrate the library into my program."
 
 ### Progressive disclosure
 
 A key design philosophy is to use a feature similar to [agent skills](https://code.claude.com/docs/en/skills)
 to progressively disclose information useful to a task.  When exfiltrate starts up, it provides
 a helpful menu of topics that can be perused by either humans or agents at their leisure.
+
+Use `exfiltrate list` in the CLI to see all available commands (both built-in and custom),
+and `exfiltrate help <command>` to get detailed information about any command.
 
 ### Agent use
 
@@ -122,10 +123,11 @@ Commands can return different response types:
 - **Files** - Binary files via `FileInfo`
 - **Images** - RGBA images via `ImageInfo`
 
-For file and image responses, use the types from the `command` module. Images use
+For file and image responses, use the types from `command` module. Images use
 `RGBA8` from the re-exported `rgb` crate.
 
-For detailed examples of all response types, run `exfiltrate help custom_commands` in the CLI.
+For integration guidance, run `exfiltrate help integration`. For detailed examples of
+all response types, run `exfiltrate help custom_commands` in the CLI.
 
 ## License
 

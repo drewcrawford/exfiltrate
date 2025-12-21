@@ -45,6 +45,9 @@
 //! to progressively disclose information useful to a task.  When exfiltrate starts up, it provides
 //! a helpful menu of topics that can be perused by either humans or agents at their leisure.
 //!
+//! Use `exfiltrate list` in the CLI to see all available commands (both built-in and custom),
+//! and `exfiltrate help <command>` to get detailed information about any command.
+//!
 //! ## Agent use
 //!
 //! I recommend instructing agents explicitly to use the exfiltrate command prior to debugging a Rust
@@ -122,7 +125,8 @@
 //! For file and image responses, use the types from [`command`] module. Images use
 //! [`RGBA8`](rgb::RGBA8) from the re-exported [`rgb`] crate.
 //!
-//! For detailed examples of all response types, run `exfiltrate help custom_commands` in the CLI.
+//! For integration guidance, run `exfiltrate help integration`. For detailed examples of
+//! all response types, run `exfiltrate help custom_commands` in the CLI.
 
 #[cfg(feature = "logwise")]
 mod logwise;
