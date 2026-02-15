@@ -17,6 +17,7 @@ name = "exfiltrate_proxy"
 path = "src/main.rs"
 
 [dependencies]
-exfiltrate_internal.workspace = true
+exfiltrate_internal = "0.2.2"
+#exfiltrate_internal.workspace = true
 sha1 = "0.10.6"
 base64 = "0.22.1"

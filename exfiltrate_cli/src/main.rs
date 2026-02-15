@@ -14,7 +14,6 @@
 use exfiltrate_internal::command::{Command, Response};
 use exfiltrate_internal::rpc::{CommandInvocation, RPC};
 use local_commands::list::List;
-use rand::Rng;
 use rand::distr::Alphanumeric;
 use std::io::Write;
 use std::path::PathBuf;
@@ -24,6 +23,7 @@ use wire::client::CLIENT;
 mod help;
 mod local_commands;
 mod wire;
+use rand::RngExt;
 
 /// Entry point for the CLI.
 ///

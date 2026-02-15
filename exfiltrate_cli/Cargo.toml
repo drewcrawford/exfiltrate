@@ -16,7 +16,8 @@ name = "exfiltrate_cli"
 path = "src/main.rs"
 
 [dependencies]
-exfiltrate_internal.workspace = true
+exfiltrate_internal = "0.2.2"
+#exfiltrate_internal.workspace = true
 rmp-serde.workspace = true
 rand = "0.10.0"
 webp = "0.3.1"
