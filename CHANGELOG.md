@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-02-15
+
 ### Changed
 - Updated `wasm_safe_thread` to improve WASM threading/runtime compatibility.
 - Switched to `WorkerGlobalScope` for browser worker support in WASM server wiring.
@@ -30,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial tracked release of exfiltrate—your friendly embeddable debug companion for Rust.
 
-[unreleased]: https://github.com/drewcrawford/exfiltrate/compare/v0.2.1...HEAD
+[unreleased]: https://github.com/drewcrawford/exfiltrate/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/drewcrawford/exfiltrate/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/drewcrawford/exfiltrate/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/drewcrawford/exfiltrate/releases/tag/v0.2.0
