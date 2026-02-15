@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::command::Command;
-use wasm_safe_mutex::rwlock::RwLock;
+use wasm_safe_thread::rwlock::RwLock;
 
 mod help;
 mod list;

@@ -6,14 +6,14 @@ use std::time::Duration;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::JsFuture;
-use wasm_safe_mutex::Mutex;
+use wasm_safe_thread::Mutex;
 use web_sys::js_sys::global;
 use web_sys::wasm_bindgen::JsCast;
 use web_sys::{Request, RequestInit, RequestMode, Response, WorkerGlobalScope};
 
 pub fn wasm32_go() {
     patch_close();
-    let thread_result = wasm_thread::Builder::new()
+    let thread_result = wasm_safe_thread::Builder::new()
         .name("exfiltrate::wasm".to_string())
         .spawn(|| {
             patch_close();
@@ -245,7 +245,7 @@ async fn create_web_socket() -> Result<web_sys::WebSocket, String> {
             let onclose_callback = Closure::wrap(Box::new(move |_event: web_sys::CloseEvent| {
                 web_sys::console::log_1(&"WebSocket closed:".into());
                 web_sys::console::log_1(&_event);
-                wasm_thread::sleep(Duration::from_secs(10));
+                wasm_safe_thread::sleep(Duration::from_secs(10));
                 SEND_WORKER_MESSAGE.0.send(WorkerMessage::Reconnect);
             }) as Box<dyn FnMut(_)>);
             ws.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
