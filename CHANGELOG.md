@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Updated `wasm_safe_thread` to improve WASM threading/runtime compatibility.
+- Switched to `WorkerGlobalScope` for browser worker support in WASM server wiring.
+
 ## [0.2.1] - 2025-12-20
 
 ### Changed
